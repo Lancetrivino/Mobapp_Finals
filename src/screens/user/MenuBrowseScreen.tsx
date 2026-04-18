@@ -6,6 +6,7 @@ import { Header, MenuItemCard } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { MenuItem } from '../../types/index';
 import { storage } from '../../utils/storage';
+import { Feather } from '@expo/vector-icons';
 
 export default function MenuBrowseScreen({ navigation }: any) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -42,7 +43,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          <Header title="Menu 🍽️" subtitle={`${filtered.length} item${filtered.length !== 1 ? 's' : ''} available`} />
+          <Header title="Menu" subtitle={`${filtered.length} item${filtered.length !== 1 ? 's' : ''} available`} />
 
           {/* Category Filter */}
           <Text style={styles.filterLabel}>Filter by Category</Text>
@@ -68,7 +69,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
             </View>
           ) : filtered.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>🍽️</Text>
+              <Feather name="inbox" size={48} color={theme.colors.gray} style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>No Items Found</Text>
               <Text style={styles.emptyText}>No items in this category. Try another!</Text>
             </View>
@@ -156,7 +157,6 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   emptyIcon: {
-    fontSize: 48,
     marginBottom: theme.spacing.sm,
   },
   emptyTitle: {

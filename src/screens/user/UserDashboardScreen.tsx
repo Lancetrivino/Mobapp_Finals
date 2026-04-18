@@ -31,16 +31,15 @@ export default function UserDashboardScreen({ navigation }: any) {
       <View style={styles.content}>
         {/* Welcome Header */}
         <Header
-          title={`Welcome, ${user?.name}! 👋`}
+          title={`Welcome, ${user?.name}`}
           subtitle="Enjoy delicious meals"
-          icon=""
         />
 
         {/* User Info Card */}
         <Card>
           <View style={styles.userInfoSection}>
             <View style={styles.userAvatarContainer}>
-              <Text style={styles.userAvatar}>👤</Text>
+              <Text style={styles.userAvatarInitials}>{user?.name?.charAt(0).toUpperCase() || 'U'}</Text>
             </View>
             <View style={styles.userDetailsContainer}>
               <Text style={styles.userEmail}>{user?.email}</Text>
@@ -59,13 +58,13 @@ export default function UserDashboardScreen({ navigation }: any) {
           <StatCard
             label="Total Orders"
             value={orderCount.toString()}
-            icon="📋"
+            iconName="clipboard"
             color={theme.colors.primary}
           />
           <StatCard
             label="Account Status"
             value="Active"
-            icon="✅"
+            iconName="check-circle"
             color={theme.colors.success}
           />
         </View>
@@ -74,16 +73,16 @@ export default function UserDashboardScreen({ navigation }: any) {
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsContainer}>
           <Button
-            title="🍽️  Browse Menu"
+            title="Browse Menu"
             onPress={() => navigation.navigate('MenuBrowse')}
           />
           <Button
-            title="🛒  Place Order"
+            title="Place Order"
             onPress={() => navigation.navigate('PlaceOrder')}
             variant="secondary"
           />
           <Button
-            title="📋  My Orders"
+            title="My Orders"
             onPress={() => navigation.navigate('MyOrders')}
             variant="success"
           />
@@ -92,7 +91,7 @@ export default function UserDashboardScreen({ navigation }: any) {
         {/* Logout Section */}
         <View style={styles.logoutSection}>
           <Button
-            title="🚪 Logout"
+            title="Logout"
             onPress={handleLogout}
             variant="outline"
           />
@@ -126,8 +125,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...theme.shadows.small,
   },
-  userAvatar: {
-    fontSize: 32,
+  userAvatarInitials: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
   },
   userDetailsContainer: {
     flex: 1,

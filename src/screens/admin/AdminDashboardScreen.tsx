@@ -47,7 +47,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
       <View style={styles.content}>
         {/* Welcome Header */}
         <Header
-          title={`Admin Dashboard 👨‍💼`}
+          title="Admin Dashboard"
           subtitle={`Welcome back, ${user?.name}`}
         />
 
@@ -57,13 +57,13 @@ export default function AdminDashboardScreen({ navigation }: any) {
           <StatCard
             label="Total Orders"
             value={stats.totalOrders.toString()}
-            icon="📋"
+            iconName="clipboard"
             color={theme.colors.primary}
           />
           <StatCard
             label="Active Orders"
             value={stats.pendingOrders.toString()}
-            icon="⏳"
+            iconName="clock"
             color={theme.colors.warning}
           />
         </View>
@@ -72,13 +72,13 @@ export default function AdminDashboardScreen({ navigation }: any) {
           <StatCard
             label="Total Users"
             value={stats.totalUsers.toString()}
-            icon="👥"
+            iconName="users"
             color={theme.colors.secondary}
           />
           <StatCard
             label="Revenue"
             value={`₱${stats.revenue.toFixed(0)}`}
-            icon="💰"
+            iconName="dollar-sign"
             color={theme.colors.success}
           />
         </View>
@@ -87,16 +87,16 @@ export default function AdminDashboardScreen({ navigation }: any) {
         <Text style={styles.sectionTitle}>Management Tools</Text>
         <View style={styles.actionButtons}>
           <Button
-            title="🍽️  Menu Management"
+            title="Menu Management"
             onPress={() => navigation.navigate('Menu')}
           />
           <Button
-            title="📋  Order Management"
+            title="Order Management"
             onPress={() => navigation.navigate('Orders')}
             variant="secondary"
           />
           <Button
-            title="👥  User Management"
+            title="User Management"
             onPress={() => navigation.navigate('Users')}
             variant="success"
           />
@@ -105,7 +105,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
         {/* Logout Section */}
         <View style={styles.logoutSection}>
           <Button
-            title="🚪 Logout"
+            title="Logout"
             onPress={handleLogout}
             variant="outline"
           />

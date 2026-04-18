@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { theme } from './src/utils/theme';
 import { MenuItem } from './src/types/index';
+import { Feather } from '@expo/vector-icons';
 
 // ─── Screens ───────────────────────────────────────────────
 import LoginScreen from './src/screens/LoginScreen';
@@ -50,10 +51,10 @@ const UserTab = createBottomTabNavigator<UserTabsParamList>();
 const UserStack = createNativeStackNavigator<UserStackParamList>();
 
 // ─── Tab Helper ────────────────────────────────────────────
-const tabIcon = (icon: string, label: string) => ({
+const tabIcon = (iconName: any, label: string) => ({
   tabBarLabel: label,
-  tabBarIcon: ({ color }: { color: string }) => (
-    <Text style={{ fontSize: 20, color }}>{icon}</Text>
+  tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+    <Feather name={iconName} size={size} color={color} />
   ),
   tabBarActiveTintColor: theme.colors.primary,
   tabBarInactiveTintColor: theme.colors.gray,
@@ -67,22 +68,22 @@ function AdminNavigator() {
       <AdminTab.Screen
         name="Dashboard"
         component={AdminDashboardScreen}
-        options={tabIcon('🏠', 'Dashboard')}
+        options={tabIcon('home', 'Dashboard')}
       />
       <AdminTab.Screen
         name="Menu"
         component={MenuManagementScreen}
-        options={tabIcon('🍽️', 'Menu')}
+        options={tabIcon('grid', 'Menu')}
       />
       <AdminTab.Screen
         name="Orders"
         component={OrderManagementScreen}
-        options={tabIcon('📋', 'Orders')}
+        options={tabIcon('clipboard', 'Orders')}
       />
       <AdminTab.Screen
         name="Users"
         component={UserManagementScreen}
-        options={tabIcon('👥', 'Users')}
+        options={tabIcon('users', 'Users')}
       />
     </AdminTab.Navigator>
   );
@@ -95,17 +96,17 @@ function UserTabs() {
       <UserTab.Screen
         name="MenuBrowse"
         component={MenuBrowseScreen}
-        options={tabIcon('🍽️', 'Menu')}
+        options={tabIcon('book-open', 'Menu')}
       />
       <UserTab.Screen
         name="MyOrders"
         component={MyOrdersScreen}
-        options={tabIcon('📋', 'My Orders')}
+        options={tabIcon('shopping-bag', 'My Orders')}
       />
       <UserTab.Screen
         name="Profile"
         component={UserDashboardScreen}
-        options={tabIcon('👤', 'Profile')}
+        options={tabIcon('user', 'Profile')}
       />
     </UserTab.Navigator>
   );

@@ -7,8 +7,10 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardTypeOptions,
+  ViewStyle,
 } from 'react-native';
 import { theme } from '../utils/theme';
+import { Feather } from '@expo/vector-icons';
 
 // Button Component
 export const Button: React.FC<{
@@ -87,20 +89,19 @@ export const Input: React.FC<{
 };
 
 // Card Component
-export const Card: React.FC<{ children: React.ReactNode; style?: any }> = ({ children, style }) => {
+export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ children, style }) => {
   return <View style={[styles.card, style]}>{children}</View>;
 };
 
 // Header Component
-export const Header: React.FC<{ title: string; subtitle?: string; icon?: string }> = ({
+export const Header: React.FC<{ title: string; subtitle?: string }> = ({
   title,
   subtitle,
-  icon,
 }) => {
   return (
     <View style={styles.headerContainer}>
       <View style={styles.headerContent}>
-        <Text style={styles.headerTitle}>{icon ? `${icon} ` : ''}{title}</Text>
+        <Text style={styles.headerTitle}>{title}</Text>
         {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
       </View>
     </View>
@@ -111,13 +112,13 @@ export const Header: React.FC<{ title: string; subtitle?: string; icon?: string 
 export const StatCard: React.FC<{
   label: string;
   value: string;
-  icon?: string;
+  iconName?: keyof typeof Feather.glyphMap;
   color?: string;
-}> = ({ label, value, icon, color = theme.colors.primary }) => {
+}> = ({ label, value, iconName, color = theme.colors.primary }) => {
   const backgroundColor = color + '15';
   return (
     <View style={[styles.statCard, { backgroundColor }]}>
-      {icon && <Text style={styles.statIcon}>{icon}</Text>}
+      {iconName && <Feather name={iconName} size={28} color={color} style={styles.statIcon} />}
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
     </View>
@@ -149,7 +150,7 @@ export const MenuItemCard: React.FC<{
         disabled={!available}
       >
         <Text style={styles.menuItemButtonText}>
-          {available ? '🛒 Order' : '❌ Out of Stock'}
+          {available ? 'Order' : 'Out of Stock'}
         </Text>
       </TouchableOpacity>
     </Card>
@@ -269,7 +270,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   statIcon: {
-    fontSize: 32,
     marginBottom: theme.spacing.xs,
   },
   statLabel: {

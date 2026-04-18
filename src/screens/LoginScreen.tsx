@@ -3,6 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, Text, ScrollView } fr
 import { useAuth } from '../context/AuthContext';
 import { Button, Input } from '../components/UIComponents';
 import { theme } from '../utils/theme';
+import { Feather } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -38,7 +39,7 @@ export default function LoginScreen({ navigation }: any) {
         {/* Header Section */}
         <View style={styles.headerSection}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logo}>🍽️</Text>
+            <Feather name="grid" size={36} color={theme.colors.primary} />
           </View>
           <Text style={styles.title}>Restaurant</Text>
           <Text style={styles.subtitle}>Management System</Text>
@@ -116,9 +117,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: theme.spacing.lg,
     ...theme.shadows.medium,
-  },
-  logo: {
-    fontSize: 40,
   },
   title: {
     fontSize: 32,
