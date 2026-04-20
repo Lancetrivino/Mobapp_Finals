@@ -3,7 +3,9 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'user';
-  password?: string;
+  avatar_url?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MenuItem {
@@ -12,24 +14,29 @@ export interface MenuItem {
   description: string;
   price: number;
   category: string;
-  image?: string;
+  image_url?: string;
   available: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Order {
   id: string;
-  userId: string;
+  user_id: string;
   items: OrderItem[];
-  totalAmount: number;
+  total_amount: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-  createdAt: Date;
-  updatedAt: Date;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface OrderItem {
-  menuItemId: string;
+  id?: string;
+  order_id?: string;
+  menu_item_id: string;
   quantity: number;
   price: number;
+  created_at?: string;
 }
 
 export interface AuthContextType {
@@ -38,4 +45,5 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  updateAvatar: (uri: string) => Promise<void>;
 }

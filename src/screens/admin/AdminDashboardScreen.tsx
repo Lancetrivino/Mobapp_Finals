@@ -1,20 +1,57 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  Animated,
+  StatusBar,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Header, Button, StatCard } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
+import { Feather } from '@expo/vector-icons';
+
+const TOOL_CARDS = [
+  {
+    title: 'Menu Management',
+    description: 'Add, edit, or disable dishes',
+    icon: 'grid' as const,
+    color: theme.colors.accent,
+    route: 'Menu',
+  },
+  {
+    title: 'Order Management',
+    description: 'Track and confirm live orders',
+    icon: 'clipboard' as const,
+    color: theme.colors.success,
+    route: 'Orders',
+  },
+  {
+    title: 'User Management',
+    description: 'Control staff roles & access',
+    icon: 'users' as const,
+    color: theme.colors.primary,
+    route: 'Users',
+  },
+];
 
 export default function AdminDashboardScreen({ navigation }: any) {
   const { logout, user } = useAuth();
-  const [stats, setStats] = useState({
-    totalOrders: 0,
-    pendingOrders: 0,
-    totalUsers: 0,
-    revenue: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ totalOrders: 0, activeOrders: 0, totalUsers: 0, revenue: 0 });
+
+  // Mount animation
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -23,97 +60,220 @@ export default function AdminDashboardScreen({ navigation }: any) {
   );
 
   const loadStats = async () => {
-    setLoading(true);
     const [orders, users] = await Promise.all([storage.getOrders(), storage.getUsers()]);
-    const pending = orders.filter((o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing').length;
+    const active = orders.filter(
+      (o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing'
+    ).length;
     const revenue = orders
       .filter((o) => o.status === 'completed')
-      .reduce((sum, o) => sum + o.totalAmount, 0);
-    setStats({
-      totalOrders: orders.length,
-      pendingOrders: pending,
-      totalUsers: users.length,
-      revenue,
-    });
-    setLoading(false);
+      .reduce((sum, o) => sum + o.total_amount, 0);
+    setStats({ totalOrders: orders.length, activeOrders: active, totalUsers: users.length, revenue });
   };
 
-  const handleLogout = async () => {
-    await logout();
-  };
+  const activeRatio = stats.totalOrders > 0 ? Math.min(stats.activeOrders / 20, 1) : 0;
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.content}>
-        {/* Welcome Header */}
-        <Header
-          title="Admin Dashboard"
-          subtitle={`Welcome back, ${user?.name}`}
-        />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
 
-        {/* Stats Cards */}
-        <Text style={styles.sectionTitle}>Key Metrics</Text>
-        <View style={styles.statsGrid}>
-          <StatCard
-            label="Total Orders"
-            value={stats.totalOrders.toString()}
-            iconName="clipboard"
-            color={theme.colors.primary}
-          />
-          <StatCard
-            label="Active Orders"
-            value={stats.pendingOrders.toString()}
-            iconName="clock"
-            color={theme.colors.warning}
-          />
-        </View>
+          {/* Header row */}
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>Admin Hub</Text>
+              <Text style={styles.headerSubtitle}>Local System Management</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => {}}>
+                <Feather name="bell" size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.iconBtn, styles.avatarBtn]} onPress={logout}>
+                <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase() || 'A'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        <View style={styles.statsGrid}>
-          <StatCard
-            label="Total Users"
-            value={stats.totalUsers.toString()}
-            iconName="users"
-            color={theme.colors.secondary}
-          />
-          <StatCard
-            label="Revenue"
-            value={`₱${stats.revenue.toFixed(0)}`}
-            iconName="dollar-sign"
-            color={theme.colors.success}
-          />
-        </View>
+          {/* KEY METRICS */}
+          <Text style={styles.sectionLabel}>KEY METRICS</Text>
+          <View style={styles.metricsRow}>
+            {/* Total Orders */}
+            <MetricCard
+              icon="shopping-cart"
+              iconColor={theme.colors.accent}
+              label="Total Orders"
+              value={stats.totalOrders.toString()}
+              sub="+12% from yesterday"
+              subColor={theme.colors.success}
+              index={0}
+            />
+            {/* Active Tables */}
+            <MetricCard
+              icon="zap"
+              iconColor={theme.colors.primary}
+              label="Active Orders"
+              value={`${stats.activeOrders}/20`}
+              progressRatio={activeRatio}
+              progressColor={theme.colors.primary}
+              index={1}
+            />
+          </View>
 
-        {/* Management Section */}
-        <Text style={styles.sectionTitle}>Management Tools</Text>
-        <View style={styles.actionButtons}>
-          <Button
-            title="Menu Management"
-            onPress={() => navigation.navigate('Menu')}
-          />
-          <Button
-            title="Order Management"
-            onPress={() => navigation.navigate('Orders')}
-            variant="secondary"
-          />
-          <Button
-            title="User Management"
-            onPress={() => navigation.navigate('Users')}
-            variant="success"
-          />
-        </View>
-
-        {/* Logout Section */}
-        <View style={styles.logoutSection}>
-          <Button
-            title="Logout"
-            onPress={handleLogout}
-            variant="outline"
-          />
-        </View>
-      </View>
-    </ScrollView>
+          {/* MANAGEMENT TOOLS */}
+          <Text style={styles.sectionLabel}>MANAGEMENT TOOLS</Text>
+          <View style={styles.toolsContainer}>
+            {TOOL_CARDS.map((tool, index) => (
+              <ToolCard
+                key={tool.route}
+                {...tool}
+                index={index}
+                onPress={() => navigation.navigate(tool.route)}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      </ScrollView>
+    </View>
   );
 }
+
+// ─── Sub-components ────────────────────────────────────────
+const MetricCard: React.FC<{
+  icon: any;
+  iconColor: string;
+  label: string;
+  value: string;
+  sub?: string;
+  subColor?: string;
+  progressRatio?: number;
+  progressColor?: string;
+  index: number;
+}> = ({ icon, iconColor, label, value, sub, subColor, progressRatio, progressColor, index }) => {
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        delay: index * 100,
+        tension: 60,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 400,
+        delay: index * 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    if (progressRatio !== undefined) {
+      Animated.timing(progressAnim, {
+        toValue: progressRatio,
+        duration: 800,
+        delay: 400 + index * 100,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [progressRatio]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.metricCard,
+        { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
+      ]}
+    >
+      <View style={[styles.metricIconWrap, { backgroundColor: iconColor + '20' }]}>
+        <Feather name={icon} size={18} color={iconColor} />
+      </View>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, { color: iconColor }]}>{value}</Text>
+      {sub && <Text style={[styles.metricSub, { color: subColor }]}>{sub}</Text>}
+      {progressRatio !== undefined && (
+        <View style={styles.progressTrack}>
+          <Animated.View
+            style={[
+              styles.progressFill,
+              {
+                backgroundColor: progressColor,
+                width: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
+            ]}
+          />
+        </View>
+      )}
+    </Animated.View>
+  );
+};
+
+const ToolCard: React.FC<{
+  title: string;
+  description: string;
+  icon: any;
+  color: string;
+  index: number;
+  onPress: () => void;
+}> = ({ title, description, icon, color, index, onPress }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 400,
+        delay: 200 + index * 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: 200 + index * 100,
+        tension: 70,
+        friction: 9,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const onPressIn = () =>
+    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
+  const onPressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50 }).start();
+
+  return (
+    <Animated.View
+      style={[
+        styles.toolCard,
+        { opacity: opacityAnim, transform: [{ translateY: slideAnim }, { scale }] },
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.toolCardInner}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        activeOpacity={1}
+      >
+        <View style={[styles.toolIconWrap, { backgroundColor: color + '20' }]}>
+          <Feather name={icon} size={22} color={color} />
+        </View>
+        <View style={styles.toolTextWrap}>
+          <Text style={styles.toolTitle}>{title}</Text>
+          <Text style={styles.toolDescription}>{description}</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -122,37 +282,150 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: theme.spacing.lg,
+    paddingTop: 56,
+    paddingBottom: 24,
   },
 
-  // Section Title
-  sectionTitle: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xl,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: theme.colors.text,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  avatarBtn: {
+    backgroundColor: theme.colors.primary + '25',
+    borderColor: theme.colors.primary + '40',
+  },
+  avatarText: {
     fontSize: 16,
     fontWeight: '700',
-    color: theme.colors.dark,
-    marginBottom: theme.spacing.md,
-    marginTop: theme.spacing.md,
-    letterSpacing: -0.3,
-    textTransform: 'uppercase',
+    color: theme.colors.primary,
   },
 
-  // Stats Grid
-  statsGrid: {
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing.md,
+    marginTop: theme.spacing.xs,
+  },
+
+  metricsRow: {
     flexDirection: 'row',
     gap: theme.spacing.md,
     marginBottom: theme.spacing.lg,
   },
+  metricCard: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.medium,
+  },
+  metricIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  metricValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  metricSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  progressTrack: {
+    height: 4,
+    backgroundColor: theme.colors.border,
+    borderRadius: 2,
+    marginTop: theme.spacing.sm,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
 
-  // Action Buttons
-  actionButtons: {
+  toolsContainer: {
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.lg,
   },
-
-  // Logout Section
-  logoutSection: {
-    marginTop: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+  toolCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+    ...theme.shadows.small,
+  },
+  toolCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    gap: theme.spacing.md,
+  },
+  toolIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: theme.borderRadius.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolTextWrap: {
+    flex: 1,
+  },
+  toolTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 3,
+  },
+  toolDescription: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
   },
 });

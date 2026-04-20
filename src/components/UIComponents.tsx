@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -8,50 +8,71 @@ import {
   ActivityIndicator,
   KeyboardTypeOptions,
   ViewStyle,
+  Animated,
 } from 'react-native';
 import { theme } from '../utils/theme';
 import { Feather } from '@expo/vector-icons';
 
-// Button Component
+// ─── Animated Button ───────────────────────────────────────
 export const Button: React.FC<{
   title: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'outline' | 'success' | 'danger';
-}> = ({ title, onPress, loading = false, disabled = false, variant = 'primary' }) => {
-  const buttonStyles = [
-    styles.button,
-    variant === 'primary' && styles.buttonPrimary,
-    variant === 'secondary' && styles.buttonSecondary,
-    variant === 'outline' && styles.buttonOutline,
-    variant === 'success' && styles.buttonSuccess,
-    variant === 'danger' && styles.buttonDanger,
-    disabled && styles.buttonDisabled,
-  ];
+  icon?: keyof typeof Feather.glyphMap;
+}> = ({ title, onPress, loading = false, disabled = false, variant = 'primary', icon }) => {
+  const scale = useRef(new Animated.Value(1)).current;
 
-  const textStyles = [
-    styles.buttonText,
-    variant === 'outline' && styles.buttonOutlineText,
-  ];
+  const onPressIn = () =>
+    Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+  const onPressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start();
+
+  const bgMap: Record<string, string> = {
+    primary: theme.colors.primary,
+    secondary: theme.colors.surfaceHigh,
+    success: theme.colors.success,
+    danger: theme.colors.error,
+    outline: 'transparent',
+  };
+
+  const textColorMap: Record<string, string> = {
+    primary: '#0D1B2A',
+    secondary: theme.colors.text,
+    success: '#FFFFFF',
+    danger: '#FFFFFF',
+    outline: theme.colors.primary,
+  };
 
   return (
-    <TouchableOpacity
-      style={buttonStyles}
-      onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.7}
-    >
-      {loading ? (
-        <ActivityIndicator color={variant === 'outline' ? theme.colors.primary : '#fff'} />
-      ) : (
-        <Text style={textStyles}>{title}</Text>
-      )}
-    </TouchableOpacity>
+    <Animated.View style={{ transform: [{ scale }], opacity: disabled ? 0.5 : 1 }}>
+      <TouchableOpacity
+        style={[
+          styles.button,
+          { backgroundColor: bgMap[variant] ?? theme.colors.primary },
+          variant === 'outline' && styles.buttonOutline,
+        ]}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        disabled={disabled || loading}
+        activeOpacity={1}
+      >
+        {loading ? (
+          <ActivityIndicator color={variant === 'primary' ? '#0D1B2A' : theme.colors.primary} size="small" />
+        ) : (
+          <View style={styles.buttonInner}>
+            {icon && <Feather name={icon} size={16} color={textColorMap[variant]} style={{ marginRight: 6 }} />}
+            <Text style={[styles.buttonText, { color: textColorMap[variant] }]}>{title}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
-// Input Component
+// ─── Input ─────────────────────────────────────────────────
 export const Input: React.FC<{
   placeholder: string;
   value: string;
@@ -60,6 +81,7 @@ export const Input: React.FC<{
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   keyboardType?: KeyboardTypeOptions;
   error?: string;
+  icon?: keyof typeof Feather.glyphMap;
 }> = ({
   placeholder,
   value,
@@ -68,14 +90,20 @@ export const Input: React.FC<{
   autoCapitalize = 'none',
   keyboardType = 'default',
   error,
+  icon,
 }) => {
   return (
     <>
       <View style={[styles.inputContainer, error && styles.inputContainerError]}>
+        {icon && (
+          <View style={styles.inputIconWrap}>
+            <Feather name={icon} size={16} color={theme.colors.textSecondary} />
+          </View>
+        )}
         <TextInput
-          style={styles.input}
+          style={[styles.input, icon && { paddingLeft: 0 }]}
           placeholder={placeholder}
-          placeholderTextColor={theme.colors.gray}
+          placeholderTextColor={theme.colors.textMuted}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry}
@@ -83,49 +111,107 @@ export const Input: React.FC<{
           keyboardType={keyboardType}
         />
       </View>
-      {error && <Text style={styles.inputError}>{error}</Text>}
+      {error && (
+        <View style={styles.errorRow}>
+          <Feather name="alert-circle" size={12} color={theme.colors.error} />
+          <Text style={styles.inputError}>{error}</Text>
+        </View>
+      )}
     </>
   );
 };
 
-// Card Component
+// ─── Card ──────────────────────────────────────────────────
 export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ children, style }) => {
   return <View style={[styles.card, style]}>{children}</View>;
 };
 
-// Header Component
-export const Header: React.FC<{ title: string; subtitle?: string }> = ({
-  title,
-  subtitle,
-}) => {
+// ─── Animated Card (for lists) ─────────────────────────────
+export const AnimatedCard: React.FC<{
+  children: React.ReactNode;
+  style?: ViewStyle;
+  index?: number;
+}> = ({ children, style, index = 0 }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(24)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 350,
+        delay: index * 70,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        delay: index * 70,
+        useNativeDriver: true,
+        tension: 80,
+        friction: 9,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[styles.card, style, { opacity, transform: [{ translateY }] }]}>
+      {children}
+    </Animated.View>
+  );
+};
+
+// ─── Header ────────────────────────────────────────────────
+export const Header: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => {
   return (
     <View style={styles.headerContainer}>
-      <View style={styles.headerContent}>
-        <Text style={styles.headerTitle}>{title}</Text>
-        {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
-      </View>
+      <Text style={styles.headerTitle}>{title}</Text>
+      {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
     </View>
   );
 };
 
-// Stat Card Component
+// ─── Section Label ─────────────────────────────────────────
+export const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
+  <Text style={styles.sectionLabel}>{label}</Text>
+);
+
+// ─── Stat Card ─────────────────────────────────────────────
 export const StatCard: React.FC<{
   label: string;
   value: string;
   iconName?: keyof typeof Feather.glyphMap;
   color?: string;
-}> = ({ label, value, iconName, color = theme.colors.primary }) => {
-  const backgroundColor = color + '15';
+  subtitle?: string;
+}> = ({ label, value, iconName, color = theme.colors.primary, subtitle }) => {
+  const scale = useRef(new Animated.Value(0.9)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 60, friction: 7 }),
+      Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
-    <View style={[styles.statCard, { backgroundColor }]}>
-      {iconName && <Feather name={iconName} size={28} color={color} style={styles.statIcon} />}
+    <Animated.View
+      style={[
+        styles.statCard,
+        { borderColor: color + '30' },
+        { opacity, transform: [{ scale }] },
+      ]}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
+        {iconName && <Feather name={iconName} size={20} color={color} />}
+      </View>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
-    </View>
+      {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
+    </Animated.View>
   );
 };
 
-// Menu Item Card
+// ─── Menu Item Card (admin list view) ──────────────────────
 export const MenuItemCard: React.FC<{
   name: string;
   description: string;
@@ -148,144 +234,154 @@ export const MenuItemCard: React.FC<{
         style={[styles.menuItemButton, !available && styles.menuItemButtonDisabled]}
         onPress={onOrder}
         disabled={!available}
+        activeOpacity={0.75}
       >
-        <Text style={styles.menuItemButtonText}>
-          {available ? 'Order' : 'Out of Stock'}
+        <Text style={[styles.menuItemButtonText, !available && { color: theme.colors.textMuted }]}>
+          {available ? '+ Add to Order' : 'Out of Stock'}
         </Text>
       </TouchableOpacity>
     </Card>
   );
 };
 
+// ─── Badge ─────────────────────────────────────────────────
+export const Badge: React.FC<{ label: string; color: string }> = ({ label, color }) => (
+  <View style={[styles.badge, { backgroundColor: color + '25', borderColor: color + '50' }]}>
+    <Text style={[styles.badgeText, { color }]}>{label}</Text>
+  </View>
+);
+
+// ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Button Styles
   button: {
-    paddingVertical: theme.spacing.md,
+    paddingVertical: 14,
     paddingHorizontal: theme.spacing.lg,
     borderRadius: theme.borderRadius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 50,
     marginVertical: theme.spacing.xs,
-    ...theme.shadows.small,
-  },
-  buttonPrimary: {
-    backgroundColor: theme.colors.primary,
-  },
-  buttonSecondary: {
-    backgroundColor: theme.colors.secondary,
-  },
-  buttonSuccess: {
-    backgroundColor: theme.colors.success,
-  },
-  buttonDanger: {
-    backgroundColor: theme.colors.error,
   },
   buttonOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
+    borderWidth: 1.5,
+    borderColor: theme.colors.borderStrong,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  buttonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
-    color: theme.colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonOutlineText: {
-    color: theme.colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 
-  // Input Styles
   inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1.5,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.surface,
     marginBottom: theme.spacing.md,
     overflow: 'hidden',
-    ...theme.shadows.small,
   },
   inputContainerError: {
     borderColor: theme.colors.error,
   },
-  input: {
+  inputIconWrap: {
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-    fontSize: 16,
-    color: theme.colors.dark,
+  },
+  input: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: -theme.spacing.sm,
+    marginBottom: theme.spacing.md,
   },
   inputError: {
     color: theme.colors.error,
-    fontSize: 13,
-    marginTop: -theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+    fontSize: 12,
     fontWeight: '500',
   },
 
-  // Card Styles
   card: {
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
-    ...theme.shadows.medium,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    ...theme.shadows.small,
   },
 
-  // Header Styles
   headerContainer: {
-    marginBottom: theme.spacing.xl,
-    paddingBottom: theme.spacing.md,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.colors.primaryLight,
-  },
-  headerContent: {
-    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.lg,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
-    color: theme.colors.dark,
+    color: theme.colors.text,
     letterSpacing: -0.5,
+    marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: theme.colors.gray,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
     fontWeight: '500',
   },
 
-  // Stat Card Styles
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing.md,
+    marginTop: theme.spacing.md,
+  },
+
   statCard: {
     flex: 1,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
     padding: theme.spacing.md,
+    borderWidth: 1,
+    ...theme.shadows.medium,
+  },
+  statIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.borderRadius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    ...theme.shadows.small,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  statIcon: {
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
   },
   statLabel: {
     fontSize: 12,
-    color: theme.colors.gray,
-    marginBottom: theme.spacing.xs,
+    color: theme.colors.textSecondary,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 4,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
   },
+  statSubtitle: {
+    fontSize: 11,
+    color: theme.colors.success,
+    fontWeight: '600',
+    marginTop: 2,
+  },
 
-  // Menu Item Card Styles
   menuItemCard: {
     marginBottom: theme.spacing.md,
   },
@@ -293,47 +389,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: theme.spacing.sm,
-  },
-  menuItemName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.dark,
     marginBottom: theme.spacing.xs,
   },
+  menuItemName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
   menuItemCategory: {
-    fontSize: 12,
-    color: theme.colors.gray,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   menuItemPrice: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: theme.colors.primary,
   },
   menuItemDescription: {
     fontSize: 13,
-    color: theme.colors.gray,
-    lineHeight: 20,
+    color: theme.colors.textSecondary,
+    lineHeight: 19,
     marginBottom: theme.spacing.md,
   },
   menuItemButton: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     borderRadius: theme.borderRadius.medium,
     alignItems: 'center',
-    ...theme.shadows.small,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + '30',
   },
   menuItemButtonDisabled: {
-    backgroundColor: theme.colors.grayLight,
-    opacity: 0.6,
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
   },
   menuItemButtonText: {
-    color: theme.colors.white,
-    fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "RMS - Restaurant Management System",
+    "name": "Restaurant Management System",
     "slug": "rms-restaurant",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
@@ -16,7 +16,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +26,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

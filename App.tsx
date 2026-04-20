@@ -3,17 +3,19 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { theme } from './src/utils/theme';
 import { MenuItem } from './src/types/index';
 import { Feather } from '@expo/vector-icons';
 
 // ─── Screens ───────────────────────────────────────────────
 import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
 import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import MenuManagementScreen from './src/screens/admin/MenuManagementScreen';
 import OrderManagementScreen from './src/screens/admin/OrderManagementScreen';
 import UserManagementScreen from './src/screens/admin/UserManagementScreen';
+import AdminProfileScreen from './src/screens/admin/AdminProfileScreen';
 import MenuBrowseScreen from './src/screens/user/MenuBrowseScreen';
 import PlaceOrderScreen from './src/screens/user/PlaceOrderScreen';
 import MyOrdersScreen from './src/screens/user/MyOrdersScreen';
@@ -22,6 +24,7 @@ import UserDashboardScreen from './src/screens/user/UserDashboardScreen';
 // ─── Param Lists ───────────────────────────────────────────
 type RootStackParamList = {
   Login: undefined;
+  Register: undefined;
   AdminNavigator: undefined;
   UserNavigator: undefined;
 };
@@ -31,6 +34,7 @@ type AdminTabsParamList = {
   Menu: undefined;
   Orders: undefined;
   Users: undefined;
+  AdminProfile: undefined;
 };
 
 type UserTabsParamList = {
@@ -41,7 +45,7 @@ type UserTabsParamList = {
 
 type UserStackParamList = {
   UserTabs: undefined;
-  PlaceOrder: { item?: MenuItem };
+  PlaceOrder: { item?: MenuItem; cartItems?: any[]; tableNumber?: string };
 };
 
 // ─── Navigator Instances ───────────────────────────────────
@@ -50,74 +54,116 @@ const AdminTab = createBottomTabNavigator<AdminTabsParamList>();
 const UserTab = createBottomTabNavigator<UserTabsParamList>();
 const UserStack = createNativeStackNavigator<UserStackParamList>();
 
-// ─── Tab Helper ────────────────────────────────────────────
-const tabIcon = (iconName: any, label: string) => ({
-  tabBarLabel: label,
-  tabBarIcon: ({ color, size }: { color: string; size: number }) => (
-    <Feather name={iconName} size={size} color={color} />
-  ),
-  tabBarActiveTintColor: theme.colors.primary,
-  tabBarInactiveTintColor: theme.colors.gray,
-  headerShown: false,
-});
+// ─── Shared Tab Bar Style ──────────────────────────────────
+const tabBarStyle = {
+  backgroundColor: '#0A1628',
+  borderTopColor: 'rgba(255,255,255,0.06)',
+  borderTopWidth: 1,
+  paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+  paddingTop: 8,
+  height: Platform.OS === 'ios' ? 84 : 64,
+};
 
 // ─── Admin Navigator (Bottom Tabs) ─────────────────────────
 function AdminNavigator() {
   return (
-    <AdminTab.Navigator screenOptions={{ headerShown: false }}>
+    <AdminTab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: '#4B5563',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const, marginTop: 2 },
+      }}
+    >
       <AdminTab.Screen
         name="Dashboard"
         component={AdminDashboardScreen}
-        options={tabIcon('home', 'Dashboard')}
+        options={{
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => <Feather name="grid" size={size} color={color} />,
+        }}
       />
       <AdminTab.Screen
         name="Menu"
         component={MenuManagementScreen}
-        options={tabIcon('grid', 'Menu')}
+        options={{
+          tabBarLabel: 'Menu',
+          tabBarIcon: ({ color, size }) => <Feather name="book-open" size={size} color={color} />,
+        }}
       />
       <AdminTab.Screen
         name="Orders"
         component={OrderManagementScreen}
-        options={tabIcon('clipboard', 'Orders')}
+        options={{
+          tabBarLabel: 'Orders',
+          tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} />,
+        }}
       />
       <AdminTab.Screen
         name="Users"
         component={UserManagementScreen}
-        options={tabIcon('users', 'Users')}
+        options={{
+          tabBarLabel: 'Users',
+          tabBarIcon: ({ color, size }) => <Feather name="users" size={size} color={color} />,
+        }}
+      />
+      <AdminTab.Screen
+        name="AdminProfile"
+        component={AdminProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
+        }}
       />
     </AdminTab.Navigator>
   );
 }
 
-// ─── User Tabs (Bottom Tabs) ────────────────────────────────
+// ─── User Tabs ──────────────────────────────────────────────
 function UserTabs() {
   return (
-    <UserTab.Navigator screenOptions={{ headerShown: false }}>
+    <UserTab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: '#4B5563',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const, marginTop: 2 },
+      }}
+    >
       <UserTab.Screen
         name="MenuBrowse"
         component={MenuBrowseScreen}
-        options={tabIcon('book-open', 'Menu')}
+        options={{
+          tabBarLabel: 'Menu',
+          tabBarIcon: ({ color, size }) => <Feather name="grid" size={size} color={color} />,
+        }}
       />
       <UserTab.Screen
         name="MyOrders"
         component={MyOrdersScreen}
-        options={tabIcon('shopping-bag', 'My Orders')}
+        options={{
+          tabBarLabel: 'Orders',
+          tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} />,
+        }}
       />
       <UserTab.Screen
         name="Profile"
         component={UserDashboardScreen}
-        options={tabIcon('user', 'Profile')}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
+        }}
       />
     </UserTab.Navigator>
   );
 }
 
-// ─── User Navigator (Stack over Tabs) ──────────────────────
-// PlaceOrder is a stack screen so it can receive { item } params
-// from MenuBrowseScreen via navigation.navigate('PlaceOrder', { item })
+// ─── User Navigator ─────────────────────────────────────────
 function UserNavigator() {
   return (
-    // @ts-ignore - React Navigation v6 + Expo SDK 54 TS type compatibility
+    // @ts-ignore
     <UserStack.Navigator screenOptions={{ headerShown: false }}>
       <UserStack.Screen name="UserTabs" component={UserTabs} />
       <UserStack.Screen name="PlaceOrder" component={PlaceOrderScreen} />
@@ -139,16 +185,16 @@ function AppNavigator() {
 
   return (
     <NavigationContainer>
-      {/* @ts-ignore - React Navigation v6 + Expo SDK 54 TS type compatibility */}
+      {/* @ts-ignore */}
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
-          // Not logged in — show Login only
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
         ) : user.role === 'admin' ? (
-          // Admin — show Admin tabs
           <Stack.Screen name="AdminNavigator" component={AdminNavigator} />
         ) : (
-          // User — show User tabs + PlaceOrder stack
           <Stack.Screen name="UserNavigator" component={UserNavigator} />
         )}
       </Stack.Navigator>
@@ -165,7 +211,6 @@ export default function App() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
   loader: {
     flex: 1,

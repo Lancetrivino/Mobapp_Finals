@@ -1,14 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, StyleSheet, ScrollView, FlatList, Text, Modal, Alert, TouchableOpacity,
+  View,
+  StyleSheet,
+  FlatList,
+  Text,
+  Modal,
+  Alert,
+  TouchableOpacity,
+  Animated,
+  StatusBar,
 } from 'react-native';
-import { Header, Card, Button, Input } from '../../components/UIComponents';
+import { Button, Input } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { User } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
+import { Feather } from '@expo/vector-icons';
 
-const emptyForm = { name: '', email: '', password: '', role: 'user' as 'admin' | 'user' };
+const emptyForm = { name: '', email: '', role: 'user' as 'admin' | 'user' };
+
+const ROLE_CONFIG = {
+  admin: { color: theme.colors.primary, label: 'Admin', icon: 'shield' as const },
+  user: { color: theme.colors.teal, label: 'User', icon: 'user' as const },
+};
 
 export default function UserManagementScreen() {
   const { user: currentUser } = useAuth();
@@ -19,7 +33,12 @@ export default function UserManagementScreen() {
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => { loadUsers(); }, []);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    loadUsers();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+  }, []);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -37,7 +56,7 @@ export default function UserManagementScreen() {
 
   const openEdit = (u: User) => {
     setEditingUser(u);
-    setForm({ name: u.name, email: u.email, password: u.password || '', role: u.role });
+    setForm({ name: u.name, email: u.email, role: u.role });
     setErrors({});
     setModalVisible(true);
   };
@@ -46,7 +65,6 @@ export default function UserManagementScreen() {
     const e: Record<string, string> = {};
     if (!form.name.trim() || form.name.trim().length < 2) e.name = 'Name must be at least 2 characters.';
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = 'Enter a valid email.';
-    if (!form.password || form.password.length < 6) e.password = 'Password must be at least 6 characters.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -54,27 +72,23 @@ export default function UserManagementScreen() {
   const handleSave = async () => {
     if (!validate()) return;
     const allUsers = await storage.getUsers();
-
     if (editingUser) {
-      // Check duplicate email (excluding self)
       const dup = allUsers.find((u) => u.email.toLowerCase() === form.email.toLowerCase() && u.id !== editingUser.id);
       if (dup) { setErrors((e) => ({ ...e, email: 'Email already in use.' })); return; }
-      await storage.setUsers(allUsers.map((u) =>
-        u.id === editingUser.id
-          ? { ...u, name: form.name.trim(), email: form.email.trim(), password: form.password, role: form.role }
-          : u
-      ));
+      await storage.setUsers(
+        allUsers.map((u) =>
+          u.id === editingUser.id
+            ? { ...u, name: form.name.trim(), email: form.email.trim(), role: form.role }
+            : u
+        )
+      );
     } else {
       const dup = allUsers.find((u) => u.email.toLowerCase() === form.email.toLowerCase());
       if (dup) { setErrors((e) => ({ ...e, email: 'Email already in use.' })); return; }
-      const newUser: User = {
-        id: Date.now().toString(),
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        role: form.role,
-      };
-      await storage.setUsers([...allUsers, newUser]);
+      await storage.setUsers([
+        ...allUsers,
+        { id: Date.now().toString(), name: form.name.trim(), email: form.email.trim(), role: form.role },
+      ]);
     }
     setModalVisible(false);
     loadUsers();
@@ -97,65 +111,84 @@ export default function UserManagementScreen() {
     ]);
   };
 
-  const renderUser = ({ item }: { item: User }) => (
-    <Card>
-      <View style={styles.userHeader}>
-        <Text style={styles.userName}>{item.name}</Text>
-        <View style={[styles.roleBadge, { backgroundColor: item.role === 'admin' ? theme.colors.secondary : theme.colors.primary }]}>
-          <Text style={styles.roleText}>{item.role.toUpperCase()}</Text>
-        </View>
-      </View>
-      <Text style={styles.userEmail}>{item.email}</Text>
-      {item.id === currentUser?.id && <Text style={styles.youLabel}>(You)</Text>}
-      <View style={styles.userActions}>
-        <Button title="Edit" onPress={() => openEdit(item)} variant="secondary" />
-        {item.id !== currentUser?.id && (
-          <Button title="Delete" onPress={() => handleDelete(item)} variant="outline" />
-        )}
-      </View>
-    </Card>
+  const renderUser = ({ item, index }: { item: User; index: number }) => (
+    <UserRow
+      user={item}
+      index={index}
+      isCurrentUser={item.id === currentUser?.id}
+      onEdit={openEdit}
+      onDelete={handleDelete}
+    />
   );
 
   return (
     <View style={styles.container}>
-      <ScrollView>
-        <View style={styles.content}>
-          <Header title="User Management" subtitle={`${users.length} accounts`} />
-          <Button title="+ Add New User" onPress={openAdd} />
-          {loading ? (
-            <Text style={styles.emptyText}>Loading...</Text>
-          ) : users.length === 0 ? (
-            <Text style={styles.emptyText}>No users found.</Text>
-          ) : (
-            <FlatList scrollEnabled={false} data={users} renderItem={renderUser} keyExtractor={(u) => u.id} />
-          )}
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>User Management</Text>
+            <Text style={styles.headerSub}>{users.length} accounts</Text>
+          </View>
+          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.8}>
+            <Feather name="user-plus" size={18} color="#0D1B2A" />
+          </TouchableOpacity>
         </View>
-      </ScrollView>
 
+        {loading ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Loading users...</Text>
+          </View>
+        ) : users.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Feather name="users" size={32} color={theme.colors.textMuted} />
+            </View>
+            <Text style={styles.emptyTitle}>No Users Yet</Text>
+            <Text style={styles.emptyText}>Tap + to add a staff account.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={users}
+            renderItem={renderUser}
+            keyExtractor={(u) => u.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </Animated.View>
+
+      {/* Add / Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>{editingUser ? 'Edit User' : 'Add New User'}</Text>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{editingUser ? 'Edit User' : 'Add New User'}</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Feather name="x" size={22} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-            <Input placeholder="Full Name" value={form.name} onChangeText={(t) => setForm({ ...form, name: t })} autoCapitalize="words" />
-            {errors.name && <Text style={styles.error}>{errors.name}</Text>}
+            <Input placeholder="Full Name" value={form.name} onChangeText={(t) => setForm({ ...form, name: t })} autoCapitalize="words" error={errors.name} icon="user" />
+            <Input placeholder="Email Address" value={form.email} onChangeText={(t) => setForm({ ...form, email: t })} keyboardType="email-address" autoCapitalize="none" error={errors.email} icon="mail" />
 
-            <Input placeholder="Email" value={form.email} onChangeText={(t) => setForm({ ...form, email: t })} keyboardType="email-address" autoCapitalize="none" />
-            {errors.email && <Text style={styles.error}>{errors.email}</Text>}
-
-            <Input placeholder="Password (min 6 chars)" value={form.password} onChangeText={(t) => setForm({ ...form, password: t })} secureTextEntry />
-            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
-
-            <Text style={styles.label}>Role</Text>
-            <View style={styles.roleRow}>
+            <Text style={styles.fieldLabel}>Access Role</Text>
+            <View style={styles.roleToggleRow}>
               {(['user', 'admin'] as const).map((r) => (
                 <TouchableOpacity
                   key={r}
-                  style={[styles.roleBtn, form.role === r && styles.roleBtnActive]}
+                  style={[styles.roleBtn, form.role === r && { backgroundColor: ROLE_CONFIG[r].color }]}
                   onPress={() => setForm({ ...form, role: r })}
+                  activeOpacity={0.75}
                 >
-                  <Text style={[styles.roleBtnText, form.role === r && styles.roleBtnTextActive]}>
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                  <Feather
+                    name={ROLE_CONFIG[r].icon}
+                    size={14}
+                    color={form.role === r ? '#0D1B2A' : theme.colors.textSecondary}
+                  />
+                  <Text style={[styles.roleBtnText, form.role === r && { color: '#0D1B2A', fontWeight: '700' }]}>
+                    {ROLE_CONFIG[r].label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -163,7 +196,7 @@ export default function UserManagementScreen() {
 
             <View style={styles.modalActions}>
               <Button title="Cancel" onPress={() => setModalVisible(false)} variant="outline" />
-              <Button title="Save" onPress={handleSave} />
+              <Button title={editingUser ? 'Save Changes' : 'Add User'} onPress={handleSave} />
             </View>
           </View>
         </View>
@@ -172,26 +205,170 @@ export default function UserManagementScreen() {
   );
 }
 
+// ─── User Row ──────────────────────────────────────────────
+const UserRow: React.FC<{
+  user: User;
+  index: number;
+  isCurrentUser: boolean;
+  onEdit: (u: User) => void;
+  onDelete: (u: User) => void;
+}> = ({ user, index, isCurrentUser, onEdit, onDelete }) => {
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnim, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, delay: index * 60, tension: 70, friction: 9, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const roleCfg = ROLE_CONFIG[user.role] || ROLE_CONFIG.user;
+  const initials = user.name
+    .split(' ')
+    .map((n) => n.charAt(0))
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  return (
+    <Animated.View style={[styles.userCard, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
+      <View style={[styles.avatarCircle, { backgroundColor: roleCfg.color + '25' }]}>
+        <Text style={[styles.avatarInitials, { color: roleCfg.color }]}>{initials}</Text>
+      </View>
+      <View style={styles.userInfo}>
+        <View style={styles.userInfoTop}>
+          <Text style={styles.userName}>
+            {user.name}
+            {isCurrentUser && <Text style={styles.youBadge}> (You)</Text>}
+          </Text>
+          <View style={[styles.rolePill, { backgroundColor: roleCfg.color + '20' }]}>
+            <Feather name={roleCfg.icon} size={10} color={roleCfg.color} />
+            <Text style={[styles.roleText, { color: roleCfg.color }]}>{roleCfg.label}</Text>
+          </View>
+        </View>
+        <Text style={styles.userEmail}>{user.email}</Text>
+        <View style={styles.userActions}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(user)} activeOpacity={0.75}>
+            <Feather name="edit-2" size={13} color={theme.colors.blue} />
+            <Text style={[styles.actionBtnText, { color: theme.colors.blue }]}>Edit</Text>
+          </TouchableOpacity>
+          {!isCurrentUser && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: theme.colors.errorLight }]}
+              onPress={() => onDelete(user)}
+              activeOpacity={0.75}
+            >
+              <Feather name="trash-2" size={13} color={theme.colors.error} />
+              <Text style={[styles.actionBtnText, { color: theme.colors.error }]}>Delete</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: theme.spacing.lg },
-  userHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.xs },
-  userName: { fontSize: 16, fontWeight: 'bold', color: theme.colors.dark, flex: 1 },
-  roleBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
-  roleText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  userEmail: { fontSize: 14, color: theme.colors.gray, marginBottom: theme.spacing.xs },
-  youLabel: { fontSize: 12, color: theme.colors.primary, fontStyle: 'italic', marginBottom: theme.spacing.xs },
-  userActions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
-  emptyText: { textAlign: 'center', color: theme.colors.gray, marginVertical: theme.spacing.lg },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: theme.colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: theme.spacing.lg, paddingBottom: 40 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: theme.colors.dark, marginBottom: theme.spacing.lg },
-  label: { fontSize: 14, color: theme.colors.gray, marginBottom: theme.spacing.sm },
-  roleRow: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.md },
-  roleBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.grayLight, alignItems: 'center' },
-  roleBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  roleBtnText: { fontSize: 14, color: theme.colors.gray, fontWeight: '600' },
-  roleBtnTextActive: { color: '#fff' },
-  modalActions: { flexDirection: 'row', gap: theme.spacing.md, marginTop: theme.spacing.md },
-  error: { color: theme.colors.error, fontSize: 12, marginTop: -theme.spacing.sm, marginBottom: theme.spacing.sm },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 56,
+    paddingBottom: theme.spacing.lg,
+  },
+  headerTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' },
+  addBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    ...theme.shadows.medium,
+  },
+  listContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 24 },
+
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },
+  emptyIcon: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text },
+  emptyText: { fontSize: 14, color: theme.colors.textSecondary },
+
+  userCard: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    gap: theme.spacing.md,
+    alignItems: 'flex-start',
+    ...theme.shadows.small,
+  },
+  avatarCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarInitials: { fontSize: 16, fontWeight: '800' },
+  userInfo: { flex: 1 },
+  userInfoTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  userName: { fontSize: 15, fontWeight: '700', color: theme.colors.text, flex: 1, marginRight: 8 },
+  youBadge: { fontSize: 12, color: theme.colors.primary, fontStyle: 'italic' },
+  rolePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: theme.borderRadius.full,
+  },
+  roleText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  userEmail: { fontSize: 12, color: theme.colors.textMuted, marginBottom: theme.spacing.sm },
+  userActions: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: theme.borderRadius.small,
+    backgroundColor: theme.colors.blueLight,
+  },
+  actionBtnText: { fontSize: 12, fontWeight: '700' },
+
+  overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
+  modal: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: theme.spacing.lg, paddingBottom: 40,
+    borderTopWidth: 1, borderColor: theme.colors.border,
+  },
+  modalHandle: {
+    width: 40, height: 4, backgroundColor: theme.colors.borderStrong,
+    borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: theme.colors.text },
+  fieldLabel: {
+    fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary,
+    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: theme.spacing.sm,
+  },
+  roleToggleRow: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.medium,
+    padding: 4,
+    marginBottom: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    gap: 4,
+  },
+  roleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 11,
+    borderRadius: theme.borderRadius.medium - 2,
+    backgroundColor: 'transparent',
+  },
+  roleBtnText: { fontSize: 14, fontWeight: '600', color: theme.colors.textMuted },
+  modalActions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
 });

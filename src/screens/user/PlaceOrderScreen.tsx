@@ -1,46 +1,59 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Text, FlatList, Alert } from 'react-native';
-import { Header, Card, Button, Input } from '../../components/UIComponents';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  Alert,
+  Animated,
+  StatusBar,
+} from 'react-native';
+import { Button, Input } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { OrderItem, MenuItem, Order } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
+import { Feather } from '@expo/vector-icons';
+
+type CartItem = { menuItemId: string; name: string; quantity: number; price: number };
 
 export default function PlaceOrderScreen({ navigation, route }: any) {
   const { user } = useAuth();
-  const [cartItems, setCartItems] = useState<(OrderItem & { name: string })[]>([]);
-  const [tableNumber, setTableNumber] = useState('');
+
+  // Accept cartItems from MenuBrowseScreen or a single item from old flow
+  const initialCart: CartItem[] = route?.params?.cartItems ?? [];
+  const singleItem: MenuItem | undefined = route?.params?.item;
+
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    if (initialCart.length > 0) return initialCart;
+    if (singleItem) {
+      return [{ menuItemId: singleItem.id, name: singleItem.name, quantity: 1, price: singleItem.price }];
+    }
+    return [];
+  });
+
+  const [tableNumber, setTableNumber] = useState(route?.params?.tableNumber ?? '');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Accept an item passed from MenuBrowseScreen
-  useEffect(() => {
-    const item: MenuItem | undefined = route?.params?.item;
-    if (item) {
-      addToCart(item);
-    }
-  }, [route?.params?.item]);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  const addToCart = (item: MenuItem) => {
-    setCartItems((prev) => {
-      const existing = prev.find((c) => c.menuItemId === item.id);
-      if (existing) {
-        return prev.map((c) => c.menuItemId === item.id ? { ...c, quantity: c.quantity + 1 } : c);
-      }
-      return [...prev, { menuItemId: item.id, name: item.name, quantity: 1, price: item.price }];
-    });
-  };
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const updateQty = (menuItemId: string, delta: number) => {
-    setCartItems((prev) => {
-      const updated = prev.map((c) => c.menuItemId === menuItemId ? { ...c, quantity: Math.max(1, c.quantity + delta) } : c);
-      return updated;
-    });
-  };
-
-  const removeItem = (menuItemId: string) => {
-    setCartItems((prev) => prev.filter((c) => c.menuItemId !== menuItemId));
+    setCartItems((prev) =>
+      prev
+        .map((c) => c.menuItemId === menuItemId ? { ...c, quantity: c.quantity + delta } : c)
+        .filter((c) => c.quantity > 0)
+    );
   };
 
   const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -55,120 +68,247 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
   };
 
   const handlePlaceOrder = async () => {
-    if (!validate()) return;
+    if (!validate() || !user?.id) return;
     setLoading(true);
     try {
-      const existing = await storage.getOrders();
-      const newOrder: Order & { tableNumber: string; notes: string } = {
-        id: Date.now().toString(),
-        userId: user?.id || '',
-        items: cartItems.map(({ menuItemId, quantity, price }) => ({ menuItemId, quantity, price })),
-        totalAmount,
-        status: 'pending',
-        tableNumber,
-        notes,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      await storage.setOrders([...existing, newOrder]);
-      Alert.alert('Order Placed!', `Order #${newOrder.id.slice(-6)} has been placed successfully.`, [
-        { text: 'OK', onPress: () => navigation.navigate('MyOrders') },
-      ]);
-      setCartItems([]);
-      setTableNumber('');
-      setNotes('');
+      const orderItems = cartItems.map(({ menuItemId, quantity, price }) => ({
+        menu_item_id: menuItemId,
+        quantity,
+        price,
+      }));
+
+      const newOrder = await storage.createOrder(user.id, orderItems, totalAmount);
+
+      if (newOrder) {
+        Alert.alert('Order Placed!', `Order #${newOrder.id.slice(-6)} has been placed.`, [
+          { text: 'OK', onPress: () => navigation.navigate('MyOrders') },
+        ]);
+        setCartItems([]);
+        setTableNumber('');
+        setNotes('');
+      } else {
+        Alert.alert('Error', 'Failed to place order. Please try again.');
+      }
     } catch (error) {
+      console.error('Order placement error:', error);
       Alert.alert('Error', 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const renderCartItem = ({ item }: { item: (typeof cartItems)[0] }) => (
-    <Card>
-      <View style={styles.cartRow}>
-        <View style={styles.cartInfo}>
-          <Text style={styles.cartName}>{item.name}</Text>
-          <Text style={styles.cartPrice}>₱{(item.price * item.quantity).toFixed(2)}</Text>
-        </View>
-        <View style={styles.qtyControls}>
-          <Button title="−" onPress={() => updateQty(item.menuItemId, -1)} variant="outline" />
-          <Text style={styles.qtyText}>{item.quantity}</Text>
-          <Button title="+" onPress={() => updateQty(item.menuItemId, 1)} variant="secondary" />
-          <Button title="✕" onPress={() => removeItem(item.menuItemId)} variant="outline" />
-        </View>
-      </View>
-    </Card>
-  );
-
   return (
     <View style={styles.container}>
-      <ScrollView>
-        <View style={styles.content}>
-          <Header title="Place Order" />
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
 
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+          <Feather name="arrow-left" size={20} color={theme.colors.text} />
+        </TouchableOpacity>
+        <View>
+          <Text style={styles.headerTitle}>Place Order</Text>
+          <Text style={styles.headerSub}>{cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart</Text>
+        </View>
+      </View>
+
+      <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+          {/* Table Number */}
+          <Text style={styles.sectionLabel}>TABLE NUMBER</Text>
           <Input
-            placeholder="Table Number"
+            placeholder="e.g. 8"
             value={tableNumber}
             onChangeText={(t) => { setTableNumber(t); setErrors((e) => ({ ...e, tableNumber: undefined })); }}
             keyboardType="numeric"
+            error={errors.tableNumber}
+            icon="hash"
           />
-          {errors.tableNumber && <Text style={styles.error}>{errors.tableNumber}</Text>}
 
-          {cartItems.length > 0 ? (
-            <>
-              <Text style={styles.sectionTitle}>Cart ({cartItems.length} item{cartItems.length > 1 ? 's' : ''})</Text>
-              <FlatList
-                scrollEnabled={false}
-                data={cartItems}
-                renderItem={renderCartItem}
-                keyExtractor={(item) => item.menuItemId}
-              />
-            </>
-          ) : (
-            <Card>
-              <Text style={styles.emptyCart}>Your cart is empty.</Text>
+          {/* Cart */}
+          <Text style={styles.sectionLabel}>ORDER ITEMS</Text>
+          {cartItems.length === 0 ? (
+            <View style={styles.emptyCart}>
+              <Feather name="shopping-cart" size={32} color={theme.colors.textMuted} />
+              <Text style={styles.emptyCartText}>Your cart is empty.</Text>
               <Button title="Browse Menu" onPress={() => navigation.navigate('MenuBrowse')} variant="secondary" />
-            </Card>
+            </View>
+          ) : (
+            <View style={styles.cartList}>
+              {cartItems.map((item, index) => (
+                <CartRow key={item.menuItemId} item={item} index={index} onUpdateQty={updateQty} />
+              ))}
+            </View>
           )}
-          {errors.cart && <Text style={styles.error}>{errors.cart}</Text>}
+          {errors.cart && (
+            <View style={styles.errorRow}>
+              <Feather name="alert-circle" size={13} color={theme.colors.error} />
+              <Text style={styles.errorText}>{errors.cart}</Text>
+            </View>
+          )}
 
+          {/* Notes */}
+          <Text style={styles.sectionLabel}>SPECIAL NOTES</Text>
           <Input
-            placeholder="Special notes or requests (optional)"
+            placeholder="Allergies, preferences... (optional)"
             value={notes}
             onChangeText={setNotes}
             autoCapitalize="sentences"
+            icon="message-square"
           />
 
-          <Card>
-            <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalAmount}>₱{totalAmount.toFixed(2)}</Text>
-          </Card>
+          {/* Order Summary */}
+          {cartItems.length > 0 && (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>₱{totalAmount.toFixed(2)}</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryTotalLabel}>Total</Text>
+                <Text style={styles.summaryTotal}>₱{totalAmount.toFixed(2)}</Text>
+              </View>
+            </View>
+          )}
 
           <Button
-            title="Place Order"
+            title={loading ? 'Placing Order...' : 'Place Order'}
             onPress={handlePlaceOrder}
             loading={loading}
             disabled={cartItems.length === 0}
+            icon="check-circle"
           />
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 }
 
+// ─── Cart Row ──────────────────────────────────────────────
+const CartRow: React.FC<{
+  item: CartItem;
+  index: number;
+  onUpdateQty: (id: string, delta: number) => void;
+}> = ({ item, index, onUpdateQty }) => {
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnim, { toValue: 1, duration: 300, delay: index * 60, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, delay: index * 60, tension: 80, friction: 9, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[styles.cartRow, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
+      <View style={styles.cartItemInfo}>
+        <Text style={styles.cartItemName}>{item.name}</Text>
+        <Text style={styles.cartItemUnitPrice}>₱{item.price.toFixed(2)} each</Text>
+      </View>
+      <View style={styles.qtyRow}>
+        <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(item.menuItemId, -1)} activeOpacity={0.75}>
+          <Feather name="minus" size={14} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.qtyText}>{item.quantity}</Text>
+        <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onUpdateQty(item.menuItemId, 1)} activeOpacity={0.75}>
+          <Feather name="plus" size={14} color="#0D1B2A" />
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.cartItemTotal}>₱{(item.price * item.quantity).toFixed(2)}</Text>
+    </Animated.View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: theme.spacing.lg },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: theme.colors.dark, marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm },
-  cartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cartInfo: { flex: 1 },
-  cartName: { fontSize: 15, fontWeight: '600', color: theme.colors.dark },
-  cartPrice: { fontSize: 14, color: theme.colors.success, fontWeight: 'bold' },
-  qtyControls: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  qtyText: { fontSize: 16, fontWeight: 'bold', color: theme.colors.dark, paddingHorizontal: 8 },
-  totalLabel: { fontSize: 14, color: theme.colors.gray, marginBottom: theme.spacing.xs },
-  totalAmount: { fontSize: 24, fontWeight: 'bold', color: theme.colors.primary },
-  emptyCart: { textAlign: 'center', color: theme.colors.gray, marginBottom: theme.spacing.md },
-  error: { color: theme.colors.error, fontSize: 12, marginTop: -theme.spacing.sm, marginBottom: theme.spacing.sm },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 52,
+    paddingBottom: theme.spacing.md,
+  },
+  backBtn: {
+    width: 40, height: 40,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3 },
+  headerSub: { fontSize: 12, color: theme.colors.textSecondary, marginTop: 1 },
+  scrollContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 40 },
+
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700', color: theme.colors.textMuted,
+    letterSpacing: 1.4, textTransform: 'uppercase',
+    marginBottom: theme.spacing.sm, marginTop: theme.spacing.md,
+  },
+
+  emptyCart: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1, borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  emptyCartText: { fontSize: 14, color: theme.colors.textSecondary },
+
+  cartList: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+    overflow: 'hidden',
+    ...theme.shadows.small,
+  },
+  cartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: theme.spacing.sm,
+  },
+  cartItemInfo: { flex: 1 },
+  cartItemName: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: 2 },
+  cartItemUnitPrice: { fontSize: 12, color: theme.colors.textMuted },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  qtyBtn: {
+    width: 28, height: 28,
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.colors.borderStrong,
+  },
+  qtyBtnAdd: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  qtyText: { fontSize: 15, fontWeight: '700', color: theme.colors.text, minWidth: 20, textAlign: 'center' },
+  cartItemTotal: { fontSize: 14, fontWeight: '700', color: theme.colors.primary, minWidth: 56, textAlign: 'right' },
+
+  summaryCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.small,
+  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  summaryLabel: { fontSize: 14, color: theme.colors.textSecondary, fontWeight: '500' },
+  summaryValue: { fontSize: 14, color: theme.colors.text, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: 8 },
+  summaryTotalLabel: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
+  summaryTotal: { fontSize: 22, fontWeight: '800', color: theme.colors.primary },
+
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: theme.spacing.sm },
+  errorText: { fontSize: 12, color: theme.colors.error, fontWeight: '500' },
 });
