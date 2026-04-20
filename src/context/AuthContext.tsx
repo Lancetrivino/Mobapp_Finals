@@ -128,6 +128,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const updateProfile = async (updates: Partial<Pick<User, 'name'>>) => {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('users')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+
+    if (error) throw new Error(error.message);
+
+    // Update local state immediately so UI reflects the change
+    setUser({ ...user, ...updates });
+  };
+
   const updateAvatar = async (uri: string) => {
     if (!user) return;
 
@@ -141,7 +155,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, register, updateAvatar }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, register, updateAvatar, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

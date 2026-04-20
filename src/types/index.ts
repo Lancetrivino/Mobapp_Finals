@@ -46,4 +46,5 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   updateAvatar: (uri: string) => Promise<void>;
+  updateProfile: (updates: Partial<Pick<User, 'name'>>) => Promise<void>;
 }
