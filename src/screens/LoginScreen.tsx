@@ -20,12 +20,10 @@ export default function LoginScreen() {
   const navigation = useNavigation<any>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'Admin' | 'User'>('Admin');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const { login } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Mount animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -100,25 +98,10 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Role Toggle */}
-          <Text style={styles.fieldLabel}>Access Role</Text>
-          <View style={styles.roleToggleRow}>
-            {(['Admin', 'User'] as const).map((r) => (
-              <TouchableOpacity
-                key={r}
-                style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-                onPress={() => setRole(r)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>{r}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
           {/* Email */}
-          <Text style={styles.fieldLabel}>User Email</Text>
+          <Text style={styles.fieldLabel}>Email</Text>
           <Input
-            placeholder={role === 'Admin' ? 'admin@dineflow.local' : 'user@dineflow.local'}
+            placeholder="your@email.com"
             value={email}
             onChangeText={(t) => {
               setEmail(t);
@@ -158,15 +141,6 @@ export default function LoginScreen() {
             <Feather name="hard-drive" size={13} color={theme.colors.teal} />
             <Text style={styles.infoText}>Local storage active. No cloud connection required.</Text>
           </View>
-
-          {/* Demo credentials hint */}
-          <View style={styles.demoCard}>
-            <Text style={styles.demoTitle}>Demo Credentials</Text>
-            <View style={styles.demoRow}>
-              <Text style={styles.demoLabel}>Admin</Text>
-              <Text style={styles.demoValue}>admin@rms.com / admin123</Text>
-            </View>
-          </View>
         </ScrollView>
       </Animated.View>
     </KeyboardAvoidingView>
@@ -178,7 +152,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-
   topSection: {
     backgroundColor: theme.colors.background,
     paddingTop: 60,
@@ -227,7 +200,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.3,
   },
-
   formSection: {
     flex: 1,
     backgroundColor: theme.colors.surface,
@@ -240,7 +212,6 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xl,
     paddingBottom: 40,
   },
-
   fieldLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -249,35 +220,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: theme.spacing.sm,
   },
-
-  roleToggleRow: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.medium,
-    padding: 4,
-    marginBottom: theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  roleBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: theme.borderRadius.medium - 2,
-    alignItems: 'center',
-  },
-  roleBtnActive: {
-    backgroundColor: theme.colors.primary,
-    ...theme.shadows.small,
-  },
-  roleBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.textMuted,
-  },
-  roleBtnTextActive: {
-    color: '#0D1B2A',
-  },
-
   switchRow: {
     marginTop: theme.spacing.md,
     alignItems: 'center',
@@ -286,7 +228,6 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '700',
   },
-
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -299,7 +240,6 @@ const styles = StyleSheet.create({
     color: theme.colors.teal,
     fontWeight: '500',
   },
-
   demoCard: {
     marginTop: theme.spacing.lg,
     backgroundColor: theme.colors.background,
