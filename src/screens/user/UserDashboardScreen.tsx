@@ -8,8 +8,11 @@ import {
   Animated,
   StatusBar,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../context/AuthContext';
 import { theme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
@@ -22,9 +25,10 @@ const QUICK_ACTIONS = [
 ];
 
 export default function UserDashboardScreen({ navigation }: any) {
-  const { user, logout } = useAuth();
+  const { user, logout, updateAvatar } = useAuth();
   const [orderCount, setOrderCount] = useState(0);
   const [rating] = useState(4.8);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -48,6 +52,34 @@ export default function UserDashboardScreen({ navigation }: any) {
     if (user?.id) {
       const userOrders = await storage.getUserOrders(user.id);
       setOrderCount(userOrders.length);
+    }
+  };
+
+  const handlePickAvatar = async () => {
+    // Request permission
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library to set a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    const uri = result.assets[0].uri;
+    setUploadingAvatar(true);
+    try {
+      await updateAvatar(uri);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to update profile picture.');
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -88,13 +120,30 @@ export default function UserDashboardScreen({ navigation }: any) {
           {/* Avatar section */}
           <View style={styles.avatarSection}>
             <Animated.View style={[styles.avatarWrap, { transform: [{ scale: avatarScaleAnim }] }]}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>{initials}</Text>
-              </View>
-              <TouchableOpacity style={styles.editAvatarBtn} onPress={() => {}} activeOpacity={0.75}>
-                <Feather name="edit-2" size={12} color="#0D1B2A" />
+              {/* Profile image or initials fallback */}
+              {user?.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarText}>{initials}</Text>
+                </View>
+              )}
+
+              {/* Edit button */}
+              <TouchableOpacity
+                style={styles.editAvatarBtn}
+                onPress={handlePickAvatar}
+                activeOpacity={0.75}
+                disabled={uploadingAvatar}
+              >
+                {uploadingAvatar ? (
+                  <ActivityIndicator size={10} color="#0D1B2A" />
+                ) : (
+                  <Feather name="camera" size={12} color="#0D1B2A" />
+                )}
               </TouchableOpacity>
             </Animated.View>
+
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
             <View style={[styles.roleBadge, { backgroundColor: roleCfg.color + '25', borderColor: roleCfg.color + '40' }]}>
@@ -149,12 +198,7 @@ const StatPill: React.FC<{ value: string; label: string; index: number }> = ({ v
   }, []);
 
   return (
-    <Animated.View
-      style={[
-        styles.statPill,
-        { opacity: opacityAnim, transform: [{ scale: countAnim }] },
-      ]}
-    >
+    <Animated.View style={[styles.statPill, { opacity: opacityAnim, transform: [{ scale: countAnim }] }]}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </Animated.View>
@@ -185,13 +229,11 @@ const ActionRow: React.FC<{
   const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50 }).start();
 
   return (
-    <Animated.View
-      style={[
-        styles.actionRow,
-        !isLast && styles.actionRowBorder,
-        { opacity: opacityAnim, transform: [{ translateY: slideAnim }, { scale }] },
-      ]}
-    >
+    <Animated.View style={[
+      styles.actionRow,
+      !isLast && styles.actionRowBorder,
+      { opacity: opacityAnim, transform: [{ translateY: slideAnim }, { scale }] },
+    ]}>
       <TouchableOpacity
         style={styles.actionRowInner}
         onPress={onPress}
@@ -231,6 +273,13 @@ const styles = StyleSheet.create({
 
   avatarSection: { alignItems: 'center', paddingVertical: theme.spacing.lg },
   avatarWrap: { position: 'relative', marginBottom: 16 },
+
+  // Shared size for both image and initials circle
+  avatarImage: {
+    width: 90, height: 90, borderRadius: 45,
+    borderWidth: 3, borderColor: theme.colors.primary + '60',
+    ...theme.shadows.medium,
+  },
   avatarCircle: {
     width: 90, height: 90, borderRadius: 45,
     backgroundColor: theme.colors.primary + '30',
@@ -239,13 +288,15 @@ const styles = StyleSheet.create({
     ...theme.shadows.medium,
   },
   avatarText: { fontSize: 32, fontWeight: '800', color: theme.colors.primary },
+
   editAvatarBtn: {
     position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: theme.colors.primary,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: theme.colors.background,
   },
+
   userName: { fontSize: 22, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3, marginBottom: 4 },
   userEmail: { fontSize: 13, color: theme.colors.textSecondary, marginBottom: 12 },
   roleBadge: {

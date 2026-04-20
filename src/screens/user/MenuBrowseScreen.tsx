@@ -113,7 +113,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
               <Text style={styles.tableBadgeText}>{tableLabel}</Text>
             </View>
             <View>
-              <Text style={styles.headerTitle}>Staff View</Text>
+              <Text style={styles.headerTitle}>Menu Screen</Text>
               <Text style={styles.headerSub}>TABLE {tableLabel.slice(2)} • ACTIVE</Text>
             </View>
           </View>

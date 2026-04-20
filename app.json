@@ -28,7 +28,10 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
-    ]
+  "expo-font",
+  ["expo-image-picker", {
+    "photosPermission": "Allow DineFlow to access your photos to set a profile picture."
+  }]
+]
   }
 }
