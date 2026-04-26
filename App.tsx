@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Platform, Animated } from 'react-native';
 import { theme } from './src/utils/theme';
 import { MenuItem } from './src/types/index';
 import { Feather } from '@expo/vector-icons';
+import { storage } from './src/utils/storage';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // ─── Screens ───────────────────────────────────────────────
 import LoginScreen from './src/screens/LoginScreen';
@@ -54,6 +56,54 @@ const AdminTab = createBottomTabNavigator<AdminTabsParamList>();
 const UserTab = createBottomTabNavigator<UserTabsParamList>();
 const UserStack = createNativeStackNavigator<UserStackParamList>();
 
+// ─── Orders Badge Icon ─────────────────────────────────────
+function OrdersBadgeIcon({ color, size }: { color: string; size: number }) {
+  const [hasPending, setHasPending] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      const orders = await storage.getOrders();
+      setHasPending(orders.some((o) => o.status === 'pending'));
+    };
+    check();
+    const interval = setInterval(check, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (hasPending) {
+      pulseRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        ])
+      );
+      pulseRef.current.start();
+    } else {
+      pulseRef.current?.stop();
+      pulseAnim.setValue(1);
+    }
+  }, [hasPending]);
+
+  return (
+    <View>
+      <Feather name="clipboard" size={size} color={color} />
+      {hasPending && (
+        <Animated.View
+          style={{
+            position: 'absolute', top: -2, right: -4,
+            width: 8, height: 8, borderRadius: 4,
+            backgroundColor: theme.colors.warning,
+            opacity: pulseAnim,
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
 // ─── Shared Tab Bar Style ──────────────────────────────────
 const tabBarStyle = {
   backgroundColor: '#0A1628',
@@ -97,7 +147,7 @@ function AdminNavigator() {
         component={OrderManagementScreen}
         options={{
           tabBarLabel: 'Orders',
-          tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <OrdersBadgeIcon color={color} size={size} />,
         }}
       />
       <AdminTab.Screen
@@ -205,9 +255,11 @@ function AppNavigator() {
 // ─── Root ──────────────────────────────────────────────────
 export default function App() {
   return (
-    <AuthProvider>
-      <AppNavigator />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <AppNavigator />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

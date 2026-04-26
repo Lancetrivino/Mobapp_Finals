@@ -69,9 +69,9 @@ export default function MyOrdersScreen({ navigation }: any) {
         </View>
 
         {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading orders...</Text>
-          </View>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {[...Array(3)].map((_, i) => <SkeletonOrderRow key={i} />)}
+          </ScrollView>
         ) : orders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
@@ -176,6 +176,27 @@ export default function MyOrdersScreen({ navigation }: any) {
     </View>
   );
 }
+
+// ─── Skeleton Row ──────────────────────────────────────────
+const SkeletonOrderRow: React.FC = () => {
+  const shimmer = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] });
+  return (
+    <Animated.View style={[styles.activeCard, { opacity }]}>
+      <View style={{ height: 14, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, width: '40%', marginBottom: 12 }} />
+      <View style={{ height: 11, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, marginBottom: 6 }} />
+      <View style={{ height: 11, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, width: '70%' }} />
+    </Animated.View>
+  );
+};
 
 // ─── Active Order Card ─────────────────────────────────────
 const ActiveOrderCard: React.FC<{ order: ExtOrder; index: number; onPress: () => void }> = ({

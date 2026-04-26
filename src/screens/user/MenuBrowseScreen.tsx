@@ -11,6 +11,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme } from '../../utils/theme';
 import { MenuItem } from '../../types/index';
@@ -42,6 +43,9 @@ export default function MenuBrowseScreen({ navigation }: any) {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const cartBarAnim = useRef(new Animated.Value(0)).current;
+  const listOpacity = useRef(new Animated.Value(1)).current;
+  const [tableNumber] = useState(() => Math.floor(Math.random() * 20) + 1);
+  const tableLabel = `T-${String(tableNumber).padStart(2, '0')}`;
 
   useFocusEffect(
     useCallback(() => {
@@ -80,6 +84,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
 
   const addToCart = (item: MenuItem) => {
     if (!item.available) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCart((prev) => {
       const existing = prev.find((c) => c.menuItemId === item.id);
       if (existing) {
@@ -96,7 +101,12 @@ export default function MenuBrowseScreen({ navigation }: any) {
     navigation.navigate('PlaceOrder', { cartItems: cart });
   };
 
-  const tableLabel = `T-${String(Math.floor(Math.random() * 20) + 1).padStart(2, '0')}`;
+  const handleCategoryChange = (cat: string) => {
+    Animated.timing(listOpacity, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => {
+      setSelectedCategory(cat);
+      Animated.timing(listOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    });
+  };
 
   const renderItem = ({ item, index }: { item: MenuItem; index: number }) => (
     <MenuGridCard item={item} index={index} onAdd={addToCart} />
@@ -153,7 +163,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
           renderItem={({ item: cat }) => (
             <TouchableOpacity
               style={[styles.chip, selectedCategory === cat && styles.chipActive]}
-              onPress={() => setSelectedCategory(cat)}
+              onPress={() => handleCategoryChange(cat)}
               activeOpacity={0.75}
             >
               <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>{cat}</Text>
@@ -163,8 +173,13 @@ export default function MenuBrowseScreen({ navigation }: any) {
 
         {/* Grid */}
         {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading menu...</Text>
+          <View style={styles.gridContent}>
+            {[...Array(4)].map((_, i) => (
+              <View key={i} style={styles.gridRow}>
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
+            ))}
           </View>
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
@@ -173,15 +188,17 @@ export default function MenuBrowseScreen({ navigation }: any) {
             <Text style={styles.emptyText}>Try a different category or search.</Text>
           </View>
         ) : (
-          <FlatList
-            data={filtered}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.gridRow}
-            contentContainerStyle={[styles.gridContent, { paddingBottom: cartCount > 0 ? 100 : 24 }]}
-            showsVerticalScrollIndicator={false}
-          />
+          <Animated.View style={{ flex: 1, opacity: listOpacity }}>
+            <FlatList
+              data={filtered}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.gridRow}
+              contentContainerStyle={[styles.gridContent, { paddingBottom: cartCount > 0 ? 100 : 24 }]}
+              showsVerticalScrollIndicator={false}
+            />
+          </Animated.View>
         )}
       </Animated.View>
 
@@ -279,6 +296,31 @@ const MenuGridCard: React.FC<{
           <Text style={styles.outOfStock}>OUT OF STOCK</Text>
         )}
       </View>
+    </Animated.View>
+  );
+};
+
+// ─── Skeleton Card ─────────────────────────────────────────
+const SkeletonCard: React.FC = () => {
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.8] });
+
+  return (
+    <Animated.View style={[styles.gridCard, { opacity, width: CARD_WIDTH }]}>
+      <View style={[styles.gridIconArea, { backgroundColor: theme.colors.surfaceHigh }]} />
+      <View style={{ height: 12, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, marginBottom: 6 }} />
+      <View style={{ height: 10, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, width: '60%', marginBottom: theme.spacing.sm }} />
+      <View style={{ height: 24, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6 }} />
     </Animated.View>
   );
 };

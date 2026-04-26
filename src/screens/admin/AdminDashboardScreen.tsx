@@ -72,6 +72,12 @@ export default function AdminDashboardScreen({ navigation }: any) {
 
   const activeRatio = stats.totalOrders > 0 ? Math.min(stats.activeOrders / 20, 1) : 0;
 
+  const formatRevenue = (v: number) => {
+    if (v >= 1000000) return `₱${(v / 1000000).toFixed(1)}M`;
+    if (v >= 1000) return `₱${(v / 1000).toFixed(1)}k`;
+    return `₱${v.toFixed(0)}`;
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
@@ -96,18 +102,16 @@ export default function AdminDashboardScreen({ navigation }: any) {
 
           {/* KEY METRICS */}
           <Text style={styles.sectionLabel}>KEY METRICS</Text>
-          <View style={styles.metricsRow}>
-            {/* Total Orders */}
+          <View style={styles.metricsGrid}>
             <MetricCard
               icon="shopping-cart"
               iconColor={theme.colors.accent}
               label="Total Orders"
               value={stats.totalOrders.toString()}
-              sub="+12% from yesterday"
+              sub="↑ +12%"
               subColor={theme.colors.success}
               index={0}
             />
-            {/* Active Tables */}
             <MetricCard
               icon="zap"
               iconColor={theme.colors.primary}
@@ -116,6 +120,24 @@ export default function AdminDashboardScreen({ navigation }: any) {
               progressRatio={activeRatio}
               progressColor={theme.colors.primary}
               index={1}
+            />
+            <MetricCard
+              icon="dollar-sign"
+              iconColor={theme.colors.teal}
+              label="Revenue"
+              value={formatRevenue(stats.revenue)}
+              sub="↑ +8%"
+              subColor={theme.colors.success}
+              index={2}
+            />
+            <MetricCard
+              icon="users"
+              iconColor={theme.colors.blue}
+              label="Users"
+              value={stats.totalUsers.toString()}
+              sub="↑ +2"
+              subColor={theme.colors.success}
+              index={3}
             />
           </View>
 
@@ -339,13 +361,15 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs,
   },
 
-  metricsRow: {
+  metricsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.spacing.md,
     marginBottom: theme.spacing.lg,
   },
   metricCard: {
-    flex: 1,
+    flexBasis: '47%',
+    flexGrow: 1,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
     padding: theme.spacing.md,

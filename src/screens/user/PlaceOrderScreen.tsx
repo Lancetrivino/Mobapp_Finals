@@ -9,6 +9,8 @@ import {
   Animated,
   StatusBar,
 } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import * as Haptics from 'expo-haptics';
 import { Button, Input } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { OrderItem, MenuItem, Order } from '../../types/index';
@@ -80,6 +82,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
       const newOrder = await storage.createOrder(user.id, orderItems, totalAmount);
 
       if (newOrder) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('Order Placed!', `Order #${newOrder.id.slice(-6)} has been placed.`, [
           { text: 'OK', onPress: () => navigation.navigate('MyOrders') },
         ]);
@@ -202,23 +205,35 @@ const CartRow: React.FC<{
     ]).start();
   }, []);
 
+  const renderRightActions = () => (
+    <TouchableOpacity
+      style={styles.swipeDelete}
+      onPress={() => onUpdateQty(item.menuItemId, -item.quantity)}
+      activeOpacity={0.8}
+    >
+      <Feather name="trash-2" size={20} color="#fff" />
+    </TouchableOpacity>
+  );
+
   return (
-    <Animated.View style={[styles.cartRow, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
-      <View style={styles.cartItemInfo}>
-        <Text style={styles.cartItemName}>{item.name}</Text>
-        <Text style={styles.cartItemUnitPrice}>₱{item.price.toFixed(2)} each</Text>
-      </View>
-      <View style={styles.qtyRow}>
-        <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(item.menuItemId, -1)} activeOpacity={0.75}>
-          <Feather name="minus" size={14} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.qtyText}>{item.quantity}</Text>
-        <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onUpdateQty(item.menuItemId, 1)} activeOpacity={0.75}>
-          <Feather name="plus" size={14} color="#0D1B2A" />
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.cartItemTotal}>₱{(item.price * item.quantity).toFixed(2)}</Text>
-    </Animated.View>
+    <Swipeable renderRightActions={renderRightActions}>
+      <Animated.View style={[styles.cartRow, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.cartItemInfo}>
+          <Text style={styles.cartItemName}>{item.name}</Text>
+          <Text style={styles.cartItemUnitPrice}>₱{item.price.toFixed(2)} each</Text>
+        </View>
+        <View style={styles.qtyRow}>
+          <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(item.menuItemId, -1)} activeOpacity={0.75}>
+            <Feather name="minus" size={14} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.qtyText}>{item.quantity}</Text>
+          <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onUpdateQty(item.menuItemId, 1)} activeOpacity={0.75}>
+            <Feather name="plus" size={14} color="#0D1B2A" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.cartItemTotal}>₱{(item.price * item.quantity).toFixed(2)}</Text>
+      </Animated.View>
+    </Swipeable>
   );
 };
 
@@ -311,4 +326,13 @@ const styles = StyleSheet.create({
 
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: theme.spacing.sm },
   errorText: { fontSize: 12, color: theme.colors.error, fontWeight: '500' },
+
+  swipeDelete: {
+    backgroundColor: theme.colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
 });

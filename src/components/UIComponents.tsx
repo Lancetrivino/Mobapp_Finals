@@ -9,7 +9,9 @@ import {
   KeyboardTypeOptions,
   ViewStyle,
   Animated,
+  Dimensions,
 } from 'react-native';
+import Svg, { Defs, Pattern, Circle, Rect } from 'react-native-svg';
 import { theme } from '../utils/theme';
 import { Feather } from '@expo/vector-icons';
 
@@ -250,6 +252,26 @@ export const Badge: React.FC<{ label: string; color: string }> = ({ label, color
     <Text style={[styles.badgeText, { color }]}>{label}</Text>
   </View>
 );
+
+// ─── Background Texture ────────────────────────────────────
+export const BackgroundTexture: React.FC = () => {
+  const { width, height } = Dimensions.get('window');
+  return (
+    <Svg
+      style={StyleSheet.absoluteFillObject as any}
+      width={width}
+      height={height}
+      pointerEvents="none"
+    >
+      <Defs>
+        <Pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <Circle cx="10" cy="10" r="1" fill="rgba(220,160,140,0.06)" />
+        </Pattern>
+      </Defs>
+      <Rect width={width} height={height} fill="url(#dots)" />
+    </Svg>
+  );
+};
 
 // ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { Input, Button } from '../components/UIComponents';
+import { Input, Button, BackgroundTexture } from '../components/UIComponents';
 import { theme } from '../utils/theme';
 import { Feather } from '@expo/vector-icons';
 
@@ -29,12 +29,22 @@ export default function RegisterScreen() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
+  const dotAnims = useRef([...Array(6)].map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 8, useNativeDriver: true }),
     ]).start();
+
+    dotAnims.forEach((anim, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: -10, duration: 3000, delay: i * 400, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 3000, useNativeDriver: true }),
+        ])
+      ).start();
+    });
   }, []);
 
   const validate = () => {
@@ -83,15 +93,16 @@ export default function RegisterScreen() {
       style={styles.container}
     >
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <BackgroundTexture />
 
       <View style={styles.topSection}>
         <View style={styles.topPattern}>
           {[...Array(6)].map((_, i) => (
-            <View
+            <Animated.View
               key={i}
               style={[
                 styles.patternDot,
-                { opacity: 0.05 + i * 0.02, top: (i % 3) * 60, left: i * 55 },
+                { opacity: 0.05 + i * 0.02, top: (i % 3) * 60, left: i * 55, transform: [{ translateY: dotAnims[i] }] },
               ]}
             />
           ))}

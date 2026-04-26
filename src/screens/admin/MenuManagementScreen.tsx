@@ -29,6 +29,50 @@ const CATEGORY_ICONS: Record<string, string> = {
   Beverage: 'coffee',
 };
 
+// ─── Cloudinary Config ─────────────────────────────────────
+const CLOUDINARY_CLOUD_NAME = 'dykaegsup';
+const CLOUDINARY_UPLOAD_PRESET = 'menu_item'; // Must be set to "Unsigned" in Cloudinary dashboard
+
+const uploadToCloudinary = async (fileUri: string): Promise<string> => {
+  const data = new FormData();
+  const filename = fileUri.split('/').pop() || 'upload.jpg';
+  const match = /\.(\w+)$/.exec(filename);
+  // Normalize extension to lowercase to avoid issues with HEIC etc.
+  const ext = match ? match[1].toLowerCase() : 'jpeg';
+  const type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+
+  data.append('file', { uri: fileUri, name: filename, type } as any);
+  data.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  // NOTE: Do NOT manually set Content-Type here. Let fetch set it automatically
+  // so it includes the correct multipart boundary. Setting it manually strips
+  // the boundary and Cloudinary will fail to parse the request body.
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    {
+      method: 'POST',
+      body: data,
+      headers: {
+        Accept: 'application/json',
+        // ✅ NO Content-Type here — fetch sets multipart/form-data + boundary automatically
+      },
+    }
+  );
+
+  const result = await response.json();
+
+  // Log full response in development to help debug issues
+  if (__DEV__) {
+    console.log('Cloudinary response:', JSON.stringify(result));
+  }
+
+  if (result.secure_url) {
+    return result.secure_url;
+  }
+
+  throw new Error(result.error?.message || 'Cloudinary upload failed. Check that your upload preset is set to Unsigned in the Cloudinary dashboard.');
+};
+
 export default function MenuManagementScreen() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +80,7 @@ export default function MenuManagementScreen() {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -60,7 +105,13 @@ export default function MenuManagementScreen() {
 
   const openEdit = (item: MenuItem) => {
     setEditingItem(item);
-    setForm({ name: item.name, description: item.description, price: String(item.price), category: item.category, image: item.image_url || '' });
+    setForm({
+      name: item.name,
+      description: item.description,
+      price: String(item.price),
+      category: item.category,
+      image: item.image_url || '',
+    });
     setErrors({});
     setModalVisible(true);
   };
@@ -75,7 +126,7 @@ export default function MenuManagementScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.7,
     });
     if (!result.canceled) {
       setForm((f) => ({ ...f, image: result.assets[0].uri }));
@@ -94,28 +145,43 @@ export default function MenuManagementScreen() {
 
   const handleSave = async () => {
     if (!validate()) return;
+    setIsSubmitting(true);
 
-    const itemData = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      price: parseFloat(form.price),
-      category: form.category,
-      image_url: form.image || undefined,
-      available: true,
-    };
+    try {
+      let imageUrl = form.image;
 
-    if (editingItem) {
-      const success = await storage.updateMenuItem(editingItem.id, itemData);
-      if (success) {
-        setModalVisible(false);
-        loadMenuItems();
+      // Only upload if the user picked a new local file (starts with file://)
+      if (imageUrl && imageUrl.startsWith('file://')) {
+        imageUrl = await uploadToCloudinary(imageUrl);
       }
-    } else {
-      const newItem = await storage.addMenuItem(itemData);
-      if (newItem) {
-        setModalVisible(false);
-        loadMenuItems();
+
+      const itemData = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        price: parseFloat(form.price),
+        category: form.category,
+        image_url: imageUrl || undefined,
+        available: editingItem ? editingItem.available : true,
+      };
+
+      if (editingItem) {
+        const success = await storage.updateMenuItem(editingItem.id, itemData);
+        if (success) {
+          setModalVisible(false);
+          loadMenuItems();
+        }
+      } else {
+        const newItem = await storage.addMenuItem(itemData);
+        if (newItem) {
+          setModalVisible(false);
+          loadMenuItems();
+        }
       }
+    } catch (error: any) {
+      console.error('Save error:', error);
+      Alert.alert('Upload Failed', error?.message || 'Failed to save the menu item. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -143,7 +209,13 @@ export default function MenuManagementScreen() {
   };
 
   const renderItem = ({ item, index }: { item: MenuItem; index: number }) => (
-    <MenuItemRow item={item} index={index} onEdit={openEdit} onDelete={handleDelete} onToggle={toggleAvailable} />
+    <MenuItemRow
+      item={item}
+      index={index}
+      onEdit={openEdit}
+      onDelete={handleDelete}
+      onToggle={toggleAvailable}
+    />
   );
 
   return (
@@ -199,7 +271,12 @@ export default function MenuManagementScreen() {
 
               {/* Food Photo Picker */}
               <Text style={styles.fieldLabel}>Food Photo</Text>
-              <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.imagePicker}
+                onPress={pickImage}
+                activeOpacity={0.8}
+                disabled={isSubmitting}
+              >
                 {form.image ? (
                   <>
                     <Image source={{ uri: form.image }} style={styles.imagePreview} />
@@ -258,7 +335,9 @@ export default function MenuManagementScreen() {
                       size={14}
                       color={form.category === cat ? '#0D1B2A' : theme.colors.textSecondary}
                     />
-                    <Text style={[styles.catBtnText, form.category === cat && styles.catBtnTextActive]}>
+                    <Text
+                      style={[styles.catBtnText, form.category === cat && styles.catBtnTextActive]}
+                    >
                       {cat}
                     </Text>
                   </TouchableOpacity>
@@ -266,8 +345,17 @@ export default function MenuManagementScreen() {
               </View>
 
               <View style={styles.modalActions}>
-                <Button title="Cancel" onPress={() => setModalVisible(false)} variant="outline" />
-                <Button title={editingItem ? 'Save Changes' : 'Add Item'} onPress={handleSave} />
+                <Button
+                  title="Cancel"
+                  onPress={() => setModalVisible(false)}
+                  variant="outline"
+                  disabled={isSubmitting}
+                />
+                <Button
+                  title={editingItem ? 'Save Changes' : 'Add Item'}
+                  onPress={handleSave}
+                  loading={isSubmitting}
+                />
               </View>
             </View>
           </ScrollView>
@@ -290,8 +378,19 @@ const MenuItemRow: React.FC<{
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacityAnim, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
-      Animated.spring(slideAnim, { toValue: 0, delay: index * 60, tension: 70, friction: 9, useNativeDriver: true }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 350,
+        delay: index * 60,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay: index * 60,
+        tension: 70,
+        friction: 9,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
 
@@ -299,13 +398,26 @@ const MenuItemRow: React.FC<{
 
   return (
     <Animated.View
-      style={[styles.itemCard, !item.available && styles.itemCardDim, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}
+      style={[
+        styles.itemCard,
+        !item.available && styles.itemCardDim,
+        { opacity: opacityAnim, transform: [{ translateY: slideAnim }] },
+      ]}
     >
       {item.image_url ? (
         <Image source={{ uri: item.image_url }} style={styles.itemImage} />
       ) : (
-        <View style={[styles.itemIconWrap, { backgroundColor: item.available ? theme.colors.accentLight : theme.colors.border }]}>
-          <Feather name={iconName} size={20} color={item.available ? theme.colors.accent : theme.colors.textMuted} />
+        <View
+          style={[
+            styles.itemIconWrap,
+            { backgroundColor: item.available ? theme.colors.accentLight : theme.colors.border },
+          ]}
+        >
+          <Feather
+            name={iconName}
+            size={20}
+            color={item.available ? theme.colors.accent : theme.colors.textMuted}
+          />
         </View>
       )}
       <View style={styles.itemInfo}>
@@ -314,14 +426,27 @@ const MenuItemRow: React.FC<{
           <Text style={styles.itemPrice}>₱{item.price.toFixed(2)}</Text>
         </View>
         <Text style={styles.itemCat}>{item.category}</Text>
-        <Text style={styles.itemDesc} numberOfLines={1}>{item.description}</Text>
+        <Text style={styles.itemDesc} numberOfLines={1}>
+          {item.description}
+        </Text>
         <View style={styles.itemActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(item)} activeOpacity={0.75}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => onEdit(item)}
+            activeOpacity={0.75}
+          >
             <Feather name="edit-2" size={14} color={theme.colors.blue} />
             <Text style={[styles.actionBtnText, { color: theme.colors.blue }]}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: item.available ? theme.colors.warningLight : theme.colors.successLight }]}
+            style={[
+              styles.actionBtn,
+              {
+                backgroundColor: item.available
+                  ? theme.colors.warningLight
+                  : theme.colors.successLight,
+              },
+            ]}
             onPress={() => onToggle(item)}
             activeOpacity={0.75}
           >
@@ -330,11 +455,20 @@ const MenuItemRow: React.FC<{
               size={14}
               color={item.available ? theme.colors.warning : theme.colors.success}
             />
-            <Text style={[styles.actionBtnText, { color: item.available ? theme.colors.warning : theme.colors.success }]}>
+            <Text
+              style={[
+                styles.actionBtnText,
+                { color: item.available ? theme.colors.warning : theme.colors.success },
+              ]}
+            >
               {item.available ? 'Disable' : 'Enable'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.colors.errorLight }]} onPress={() => onDelete(item)} activeOpacity={0.75}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: theme.colors.errorLight }]}
+            onPress={() => onDelete(item)}
+            activeOpacity={0.75}
+          >
             <Feather name="trash-2" size={14} color={theme.colors.error} />
           </TouchableOpacity>
         </View>
@@ -356,17 +490,32 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' },
   addBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: theme.colors.primary,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
     ...theme.shadows.medium,
   },
   listContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 24 },
 
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 60,
+  },
   emptyIcon: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text },
   emptyText: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center' },
@@ -384,24 +533,42 @@ const styles = StyleSheet.create({
   },
   itemCardDim: { opacity: 0.65 },
   itemIconWrap: {
-    width: 56, height: 56,
+    width: 56,
+    height: 56,
     borderRadius: theme.borderRadius.medium,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   itemImage: {
-    width: 56, height: 56,
+    width: 56,
+    height: 56,
     borderRadius: theme.borderRadius.medium,
   },
   itemInfo: { flex: 1 },
-  itemInfoTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 },
+  itemInfoTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 3,
+  },
   itemName: { fontSize: 15, fontWeight: '700', color: theme.colors.text, flex: 1, marginRight: 8 },
   itemPrice: { fontSize: 15, fontWeight: '700', color: theme.colors.primary },
-  itemCat: { fontSize: 11, color: theme.colors.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 },
+  itemCat: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 3,
+  },
   itemDesc: { fontSize: 12, color: theme.colors.textMuted, marginBottom: theme.spacing.sm },
   itemActions: { flexDirection: 'row', gap: 8 },
   actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: theme.borderRadius.small,
     backgroundColor: theme.colors.blueLight,
   },
@@ -411,19 +578,36 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
   modal: {
     backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: theme.spacing.lg, paddingBottom: 40,
-    borderTopWidth: 1, borderColor: theme.colors.border,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: theme.spacing.lg,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderColor: theme.colors.border,
   },
   modalHandle: {
-    width: 40, height: 4, backgroundColor: theme.colors.borderStrong,
-    borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg,
+    width: 40,
+    height: 4,
+    backgroundColor: theme.colors.borderStrong,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: theme.spacing.lg,
   },
   modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
   },
   modalTitle: { fontSize: 20, fontWeight: '700', color: theme.colors.text },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: theme.spacing.sm },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing.sm,
+  },
 
   // Image picker
   imagePicker: {
@@ -458,20 +642,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   imagePlaceholderIcon: {
-    width: 52, height: 52, borderRadius: 26,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: theme.colors.surface,
-    borderWidth: 1, borderColor: theme.colors.border,
-    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imagePlaceholderText: { fontSize: 14, fontWeight: '600', color: theme.colors.textSecondary },
   imagePlaceholderSub: { fontSize: 11, color: theme.colors.textMuted },
 
-  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
+  catGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
+  },
   catBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: theme.borderRadius.full,
-    borderWidth: 1, borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     backgroundColor: theme.colors.background,
   },
   catBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
