@@ -21,10 +21,16 @@ export default function RegisterScreen() {
   const navigation = useNavigation<any>();
   const { register } = useAuth();
 
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    password?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -48,8 +54,11 @@ export default function RegisterScreen() {
   }, []);
 
   const validate = () => {
-    const newErrors: { name?: string; email?: string; password?: string } = {};
-    if (!name.trim() || name.trim().length < 2) newErrors.name = 'Name must be at least 2 characters.';
+    const newErrors: typeof errors = {};
+    if (!firstName.trim() || firstName.trim().length < 2)
+      newErrors.firstName = 'First name must be at least 2 characters.';
+    if (!lastName.trim() || lastName.trim().length < 2)
+      newErrors.lastName = 'Last name must be at least 2 characters.';
     if (!email.trim()) newErrors.email = 'Email is required.';
     else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Enter a valid email.';
     if (!password) newErrors.password = 'Password is required.';
@@ -61,15 +70,13 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     if (!validate()) return;
 
+    const fullName = `${firstName.trim()} ${lastName.trim()}`;
+
     setIsSubmitting(true);
     try {
-      await register(name.trim(), email.trim(), password);
-      // register() only throws 'CONFIRM_EMAIL' if email confirmation is required
-      // If we reach here without an error, the user was signed in automatically
-      // (email confirmation is off) — the AuthContext listener will handle navigation.
+      await register(fullName, email.trim(), password);
     } catch (error: any) {
       if (error.message === 'CONFIRM_EMAIL') {
-        // Email confirmation required — tell the user and go to login
         Alert.alert(
           'Check your email',
           'A confirmation link has been sent to ' + email.trim() + '. Please confirm your email before signing in.',
@@ -77,7 +84,10 @@ export default function RegisterScreen() {
         );
       } else if (error.message.toLowerCase().includes('rate limit')) {
         setErrors({ email: 'Too many attempts. Please try again in an hour.' });
-      } else if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('already exists')) {
+      } else if (
+        error.message.toLowerCase().includes('already registered') ||
+        error.message.toLowerCase().includes('already exists')
+      ) {
         setErrors({ email: 'An account with this email already exists. Please sign in instead.' });
       } else {
         setErrors({ password: error.message || 'Registration failed. Please try again.' });
@@ -102,7 +112,12 @@ export default function RegisterScreen() {
               key={i}
               style={[
                 styles.patternDot,
-                { opacity: 0.05 + i * 0.02, top: (i % 3) * 60, left: i * 55, transform: [{ translateY: dotAnims[i] }] },
+                {
+                  opacity: 0.05 + i * 0.02,
+                  top: (i % 3) * 60,
+                  left: i * 55,
+                  transform: [{ translateY: dotAnims[i] }],
+                },
               ]}
             />
           ))}
@@ -116,24 +131,45 @@ export default function RegisterScreen() {
         <Text style={styles.brandTagline}>Register to manage orders and view your menu.</Text>
       </View>
 
-      <Animated.View style={[styles.formSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <Animated.View
+        style={[styles.formSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.fieldLabel}>Full Name</Text>
-          <Input
-            placeholder="John Doe"
-            value={name}
-            onChangeText={(t) => {
-              setName(t);
-              setErrors((e) => ({ ...e, name: undefined }));
-            }}
-            autoCapitalize="words"
-            error={errors.name}
-            icon="user"
-          />
+          {/* First Name + Last Name side by side */}
+          <View style={styles.nameRow}>
+            <View style={styles.nameField}>
+              <Text style={styles.fieldLabel}>First Name</Text>
+              <Input
+                placeholder="John"
+                value={firstName}
+                onChangeText={(t) => {
+                  setFirstName(t);
+                  setErrors((e) => ({ ...e, firstName: undefined }));
+                }}
+                autoCapitalize="words"
+                error={errors.firstName}
+                icon="user"
+              />
+            </View>
+            <View style={styles.nameField}>
+              <Text style={styles.fieldLabel}>Last Name</Text>
+              <Input
+                placeholder="Doe"
+                value={lastName}
+                onChangeText={(t) => {
+                  setLastName(t);
+                  setErrors((e) => ({ ...e, lastName: undefined }));
+                }}
+                autoCapitalize="words"
+                error={errors.lastName}
+                icon="user"
+              />
+            </View>
+          </View>
 
           <Text style={styles.fieldLabel}>Email</Text>
           <Input
@@ -168,10 +204,16 @@ export default function RegisterScreen() {
 
           <View style={styles.infoRow}>
             <Feather name="info" size={13} color={theme.colors.teal} />
-            <Text style={styles.infoText}>A new account will be stored in Supabase and can be signed in immediately.</Text>
+            <Text style={styles.infoText}>
+              A new account will be stored in Supabase and can be signed in immediately.
+            </Text>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} activeOpacity={0.75} style={styles.switchRow}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.75}
+            style={styles.switchRow}
+          >
             <Text style={styles.switchText}>Already have an account? Sign in</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -245,6 +287,14 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xl,
     paddingBottom: 40,
   },
+  nameRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginBottom: 0,
+  },
+  nameField: {
+    flex: 1,
+  },
   fieldLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -257,9 +307,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: theme.spacing.lg,
+    gap: 6,
   },
   infoText: {
-    marginLeft: 8,
+    flex: 1,
     color: theme.colors.textSecondary,
     fontSize: 12,
     lineHeight: 18,

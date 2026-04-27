@@ -69,7 +69,7 @@ export default function UserDashboardScreen({ navigation }: any) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
@@ -116,7 +116,6 @@ export default function UserDashboardScreen({ navigation }: any) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
 
-      {/* Header */}
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>My Profile</Text>
         <TouchableOpacity
@@ -190,7 +189,6 @@ export default function UserDashboardScreen({ navigation }: any) {
         </ScrollView>
       </Animated.View>
 
-      {/* Modals */}
       <ChangePasswordModal visible={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
       <EditProfileModal
         visible={showEditProfileModal}
@@ -234,7 +232,6 @@ const ChangePasswordModal: React.FC<{ visible: boolean; onClose: () => void }> =
     if (!validate()) return;
     setLoading(true);
     try {
-      // Verify current password by re-signing in
       const { data: userData } = await supabase.auth.getUser();
       const email = userData.user?.email;
       if (!email) throw new Error('Unable to verify current session.');
@@ -366,12 +363,8 @@ const EditProfileModal: React.FC<{
     }
     setLoading(true);
     try {
-      // Updates DB + local user state in one call
       await updateProfile({ name: name.trim() });
-
-      // Also sync Supabase auth metadata
       await supabase.auth.updateUser({ data: { name: name.trim() } });
-
       Alert.alert('Profile Updated', 'Your display name has been updated.', [
         { text: 'OK', onPress: onClose },
       ]);
@@ -550,7 +543,6 @@ const styles = StyleSheet.create({
   },
   logoutText: { fontSize: 15, fontWeight: '700', color: theme.colors.error },
 
-  // Modals
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
   modalSheet: {

@@ -226,11 +226,12 @@ export const storage = {
 
     if (itemsError) {
       console.error('[storage] createOrder (items insert):', itemsError.message);
+      // Cleanup orphan order row
       await supabase.from('orders').delete().eq('id', orderRow.id);
       return null;
     }
 
-    // 3. Re-fetch with join
+    // 3. Re-fetch with join to get item names
     const { data: fullOrder, error: fetchError } = await supabase
       .from('orders')
       .select(ORDER_JOIN)
@@ -262,24 +263,39 @@ export const storage = {
   },
 
   /**
-   * Cancels a pending order. Throws if the order is no longer cancellable.
+   * Cancels a pending order.
+   * Regular users can cancel their own pending orders.
+   * Throws a descriptive error if the order cannot be cancelled.
    */
   cancelOrder: async (orderId: string): Promise<void> => {
+    // First verify the order is still pending — fetch only status
     const { data: existing, error: fetchErr } = await supabase
       .from('orders')
-      .select('status')
+      .select('status, user_id')
       .eq('id', orderId)
       .single();
 
-    if (fetchErr || !existing) throw new Error('Order not found.');
-    if (existing.status !== 'pending') {
-      throw new Error(`Cannot cancel an order that is already "${existing.status}".`);
+    if (fetchErr || !existing) {
+      throw new Error('Order not found.');
     }
+
+    if (existing.status !== 'pending') {
+      throw new Error(
+        `Cannot cancel an order that is already "${existing.status}". ` +
+        'Only pending orders can be cancelled.'
+      );
+    }
+
+    // Users can only cancel their own orders (RLS also enforces this,
+    // but we give a friendly error here before hitting the DB)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated.');
 
     const { error } = await supabase
       .from('orders')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('user_id', user.id); // scoped to owner — never touches other users' orders
 
     if (error) throw new Error(error.message);
   },
@@ -411,7 +427,6 @@ export const storage = {
     const itemCounts: Record<string, number> = {};
 
     for (const order of orders) {
-      // Status counts
       ordersByStatus[order.status] = (ordersByStatus[order.status] ?? 0) + 1;
 
       if (order.status !== 'completed') continue;
@@ -420,7 +435,6 @@ export const storage = {
       if (t >= startOfDay) todayRevenue += order.total_amount;
       if (t >= startOfWeek) weekRevenue += order.total_amount;
 
-      // Item frequency
       for (const item of order.items) {
         const name = item.name ?? 'Unknown';
         itemCounts[name] = (itemCounts[name] ?? 0) + item.quantity;
