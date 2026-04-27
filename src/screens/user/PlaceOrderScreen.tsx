@@ -30,6 +30,9 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Guard against double-submission
+  const isSubmitting = useRef(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -67,9 +70,12 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
   }, [cartItems, tableNumber]);
 
   const handlePlaceOrder = useCallback(async () => {
+    if (isSubmitting.current) return;
     if (!validate() || !user?.id) return;
 
+    isSubmitting.current = true;
     setLoading(true);
+
     try {
       const newOrder = await storage.createOrder(
         user.id,
@@ -89,6 +95,8 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
         setCartItems([]);
         setTableNumber('');
         setNotes('');
+        // Signal MenuBrowse to clear its cart when the user returns to that tab
+        navigation.navigate('MenuBrowse', { orderPlaced: true });
       } else {
         Alert.alert('Error', 'Failed to place order. Please try again.');
       }
@@ -97,6 +105,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
       Alert.alert('Error', 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
+      isSubmitting.current = false;
     }
   }, [validate, user?.id, cartItems, totalAmount, tableNumber, notes, navigation]);
 
@@ -197,7 +206,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
   );
 }
 
-// ─── Cart Row — memoized so it only re-renders when its own item changes ──────
+// ─── Cart Row ──────────────────────────────────────────────
 const CartRow: React.FC<{
   item: CartItem;
   index: number;

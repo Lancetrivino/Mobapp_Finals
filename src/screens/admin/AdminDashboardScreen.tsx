@@ -27,6 +27,8 @@ const INITIAL_ANALYTICS: AdminAnalytics = {
   todayRevenue: 0,
   weekRevenue: 0,
   ordersByStatus: {},
+  revenueGrowthPercent: null,
+  orderGrowthPercent: null,
 };
 
 const TOOL_CARDS = [
@@ -34,6 +36,18 @@ const TOOL_CARDS = [
   { title: 'Order Management', description: 'Track and confirm live orders', icon: 'clipboard' as const, color: theme.colors.success, route: 'Orders' },
   { title: 'User Management', description: 'Control staff roles & access', icon: 'users' as const, color: theme.colors.primary, route: 'Users' },
 ] as const;
+
+// Formats a growth percent for display, e.g. +12% or -5%
+function formatGrowth(pct: number | null): string | null {
+  if (pct === null) return null;
+  if (pct === 0) return '→ 0%';
+  return pct > 0 ? `↑ +${pct}%` : `↓ ${pct}%`;
+}
+
+function growthColor(pct: number | null): string {
+  if (pct === null || pct === 0) return theme.colors.textMuted;
+  return pct > 0 ? theme.colors.success : theme.colors.error;
+}
 
 export default function AdminDashboardScreen({ navigation }: any) {
   const { logout, user } = useAuth();
@@ -51,7 +65,6 @@ export default function AdminDashboardScreen({ navigation }: any) {
   }, []);
 
   const loadStats = useCallback(async () => {
-    // Parallel fetch — all three queries fire at once
     const [orders, users, analyticsData] = await Promise.all([
       storage.getOrders(),
       storage.getUsers(),
@@ -85,6 +98,9 @@ export default function AdminDashboardScreen({ navigation }: any) {
 
   const navigate = useCallback((route: string) => navigation.navigate(route), [navigation]);
 
+  const orderGrowthLabel = formatGrowth(analytics.orderGrowthPercent);
+  const revenueGrowthLabel = formatGrowth(analytics.revenueGrowthPercent);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
@@ -110,10 +126,40 @@ export default function AdminDashboardScreen({ navigation }: any) {
           {/* KEY METRICS */}
           <Text style={styles.sectionLabel}>KEY METRICS</Text>
           <View style={styles.metricsGrid}>
-            <MetricCard icon="shopping-cart" iconColor={theme.colors.accent} label="Total Orders" value={stats.totalOrders.toString()} sub="↑ +12%" subColor={theme.colors.success} index={0} />
-            <MetricCard icon="zap" iconColor={theme.colors.primary} label="Active Orders" value={`${stats.activeOrders}/20`} progressRatio={activeRatio} progressColor={theme.colors.primary} index={1} />
-            <MetricCard icon="dollar-sign" iconColor={theme.colors.teal} label="Revenue" value={formatRevenue(stats.revenue)} sub="↑ +8%" subColor={theme.colors.success} index={2} />
-            <MetricCard icon="users" iconColor={theme.colors.blue} label="Users" value={stats.totalUsers.toString()} sub="↑ +2" subColor={theme.colors.success} index={3} />
+            <MetricCard
+              icon="shopping-cart"
+              iconColor={theme.colors.accent}
+              label="Total Orders"
+              value={stats.totalOrders.toString()}
+              sub={orderGrowthLabel ?? 'vs yesterday'}
+              subColor={growthColor(analytics.orderGrowthPercent)}
+              index={0}
+            />
+            <MetricCard
+              icon="zap"
+              iconColor={theme.colors.primary}
+              label="Active Orders"
+              value={`${stats.activeOrders}/20`}
+              progressRatio={activeRatio}
+              progressColor={theme.colors.primary}
+              index={1}
+            />
+            <MetricCard
+              icon="dollar-sign"
+              iconColor={theme.colors.teal}
+              label="Revenue"
+              value={formatRevenue(stats.revenue)}
+              sub={revenueGrowthLabel ?? 'vs last week'}
+              subColor={growthColor(analytics.revenueGrowthPercent)}
+              index={2}
+            />
+            <MetricCard
+              icon="users"
+              iconColor={theme.colors.blue}
+              label="Users"
+              value={stats.totalUsers.toString()}
+              index={3}
+            />
           </View>
 
           {/* MANAGEMENT TOOLS */}
@@ -168,7 +214,7 @@ const MetricCard: React.FC<{
   iconColor: string;
   label: string;
   value: string;
-  sub?: string;
+  sub?: string | null;
   subColor?: string;
   progressRatio?: number;
   progressColor?: string;
@@ -203,7 +249,9 @@ const MetricCard: React.FC<{
       </View>
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={[styles.metricValue, { color: iconColor }]}>{value}</Text>
-      {sub && <Text style={[styles.metricSub, { color: subColor }]}>{sub}</Text>}
+      {sub != null && (
+        <Text style={[styles.metricSub, { color: subColor ?? theme.colors.textMuted }]}>{sub}</Text>
+      )}
       {progressRatio !== undefined && (
         <View style={styles.progressTrack}>
           <Animated.View

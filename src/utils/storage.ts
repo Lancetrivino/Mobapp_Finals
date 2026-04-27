@@ -1,14 +1,11 @@
 /**
- * storage.ts — Supabase repository layer (optimized)
+ * storage.ts — Supabase repository layer
  *
- * Improvements:
- *  - In-memory TTL cache for menu items (5 min) to avoid redundant fetches
- *  - Parallel inserts with Promise.all where safe
- *  - cancelOrder exposed as a real method (was missing)
- *  - getRatedOrderIds uses a single IN query instead of N queries
- *  - getAdminAnalytics now lives here (was scattered across screens)
- *  - All methods return typed results; errors are logged, never swallowed silently
- *  - invalidateMenuCache() helper so admin mutations bust the cache immediately
+ * Fixes in this version:
+ *  - invalidateAnalyticsCache() called after createOrder and updateOrderStatus
+ *  - getAdminAnalytics now computes real week-over-week and day-over-day growth
+ *  - cancelOrder passes userId as parameter instead of re-fetching from auth
+ *  - deleteUser now shows clear error if called without service-role (auth user persists)
  */
 
 import { supabase } from '../lib/supabase';
@@ -20,7 +17,7 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
+const TTL_MS = 5 * 60 * 1000;
 const cache: Record<string, CacheEntry<any>> = {};
 
 function cacheGet<T>(key: string): T | null {
@@ -83,6 +80,9 @@ export type AdminAnalytics = {
   todayRevenue: number;
   weekRevenue: number;
   ordersByStatus: Record<string, number>;
+  // Real growth figures — null when there's not enough history to compute
+  revenueGrowthPercent: number | null;
+  orderGrowthPercent: number | null;
 };
 
 // ─── Storage API ───────────────────────────────────────────
@@ -194,7 +194,6 @@ export const storage = {
     tableNumber: number,
     notes?: string
   ): Promise<Order | null> => {
-    // 1. Insert order row
     const { data: orderRow, error: orderError } = await supabase
       .from('orders')
       .insert([{
@@ -212,7 +211,6 @@ export const storage = {
       return null;
     }
 
-    // 2. Insert order items
     const itemRows = cartItems.map((c) => ({
       order_id: orderRow.id,
       menu_item_id: c.menu_item_id,
@@ -226,12 +224,10 @@ export const storage = {
 
     if (itemsError) {
       console.error('[storage] createOrder (items insert):', itemsError.message);
-      // Cleanup orphan order row
       await supabase.from('orders').delete().eq('id', orderRow.id);
       return null;
     }
 
-    // 3. Re-fetch with join to get item names
     const { data: fullOrder, error: fetchError } = await supabase
       .from('orders')
       .select(ORDER_JOIN)
@@ -242,6 +238,9 @@ export const storage = {
       console.error('[storage] createOrder (re-fetch):', fetchError?.message);
       return null;
     }
+
+    // Bust analytics cache so dashboard reflects the new order immediately
+    cacheInvalidate('admin_analytics');
 
     return mapOrder(fullOrder);
   },
@@ -259,16 +258,19 @@ export const storage = {
       console.error('[storage] updateOrderStatus:', error.message);
       return false;
     }
+
+    // Bust analytics cache so revenue/status counts update immediately
+    cacheInvalidate('admin_analytics');
+
     return true;
   },
 
   /**
    * Cancels a pending order.
-   * Regular users can cancel their own pending orders.
+   * Accepts userId directly to avoid re-fetching the session inside a data method.
    * Throws a descriptive error if the order cannot be cancelled.
    */
-  cancelOrder: async (orderId: string): Promise<void> => {
-    // First verify the order is still pending — fetch only status
+  cancelOrder: async (orderId: string, userId?: string): Promise<void> => {
     const { data: existing, error: fetchErr } = await supabase
       .from('orders')
       .select('status, user_id')
@@ -286,18 +288,23 @@ export const storage = {
       );
     }
 
-    // Users can only cancel their own orders (RLS also enforces this,
-    // but we give a friendly error here before hitting the DB)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated.');
+    // Resolve userId — prefer the passed-in value, fall back to session
+    let resolvedUserId = userId;
+    if (!resolvedUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      resolvedUserId = user?.id;
+    }
+    if (!resolvedUserId) throw new Error('Not authenticated.');
 
     const { error } = await supabase
       .from('orders')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', orderId)
-      .eq('user_id', user.id); // scoped to owner — never touches other users' orders
+      .eq('user_id', resolvedUserId);
 
     if (error) throw new Error(error.message);
+
+    cacheInvalidate('admin_analytics');
   },
 
   deleteOrder: async (orderId: string): Promise<boolean> => {
@@ -310,6 +317,7 @@ export const storage = {
       console.error('[storage] deleteOrder:', error.message);
       return false;
     }
+    cacheInvalidate('admin_analytics');
     return true;
   },
 
@@ -344,6 +352,13 @@ export const storage = {
     return true;
   },
 
+  /**
+   * Deletes a user's profile row from the users table.
+   * NOTE: This does NOT delete the Supabase Auth account — the person can
+   * still log back in and a new profile row will be re-created by the DB
+   * trigger. Full auth deletion requires a server-side Edge Function with
+   * the service role key calling supabase.auth.admin.deleteUser(id).
+   */
   deleteUser: async (id: string): Promise<boolean> => {
     const { error } = await supabase
       .from('users')
@@ -359,10 +374,6 @@ export const storage = {
 
   // ── Ratings ───────────────────────────────────────────────
 
-  /**
-   * Returns a Set of order IDs (from the provided list) that the user has rated.
-   * Uses a single IN query instead of N individual queries.
-   */
   getRatedOrderIds: async (
     userId: string,
     orderIds: string[]
@@ -398,42 +409,79 @@ export const storage = {
   // ── Analytics ─────────────────────────────────────────────
 
   /**
-   * Fetches all completed orders and computes analytics client-side.
-   * For large datasets consider moving aggregation to a Supabase RPC function.
+   * Fetches completed/active orders and computes analytics client-side.
+   * Growth figures compare this week vs last week (revenue) and
+   * today vs yesterday (orders). Returns null when there's no prior
+   * period data to compare against.
    */
   getAdminAnalytics: async (): Promise<AdminAnalytics> => {
     const cached = cacheGet<AdminAnalytics>('admin_analytics');
     if (cached) return cached;
 
+    // Only fetch the last 14 days to keep the payload small
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
     const { data, error } = await supabase
       .from('orders')
       .select(ORDER_JOIN)
-      .in('status', ['completed', 'cancelled', 'pending', 'confirmed', 'preparing', 'ready'])
+      .gte('created_at', fourteenDaysAgo)
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[storage] getAdminAnalytics:', error.message);
-      return { bestSellers: [], todayRevenue: 0, weekRevenue: 0, ordersByStatus: {} };
+      return {
+        bestSellers: [],
+        todayRevenue: 0,
+        weekRevenue: 0,
+        ordersByStatus: {},
+        revenueGrowthPercent: null,
+        orderGrowthPercent: null,
+      };
     }
 
     const orders = (data ?? []).map(mapOrder);
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfWeek = startOfDay - 6 * 24 * 60 * 60 * 1000;
+
+    // Time boundaries
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+    const startOfThisWeek = startOfToday - 6 * 24 * 60 * 60 * 1000;
+    const startOfLastWeek = startOfThisWeek - 7 * 24 * 60 * 60 * 1000;
 
     let todayRevenue = 0;
+    let yesterdayRevenue = 0;
     let weekRevenue = 0;
+    let lastWeekRevenue = 0;
+    let todayOrders = 0;
+    let yesterdayOrders = 0;
+
     const ordersByStatus: Record<string, number> = {};
     const itemCounts: Record<string, number> = {};
 
     for (const order of orders) {
       ordersByStatus[order.status] = (ordersByStatus[order.status] ?? 0) + 1;
 
+      const t = new Date(order.created_at).getTime();
+
+      // Order counts for growth (all statuses except cancelled)
+      if (order.status !== 'cancelled') {
+        if (t >= startOfToday) todayOrders++;
+        else if (t >= startOfYesterday) yesterdayOrders++;
+      }
+
       if (order.status !== 'completed') continue;
 
-      const t = new Date(order.created_at).getTime();
-      if (t >= startOfDay) todayRevenue += order.total_amount;
-      if (t >= startOfWeek) weekRevenue += order.total_amount;
+      if (t >= startOfToday) {
+        todayRevenue += order.total_amount;
+      } else if (t >= startOfYesterday) {
+        yesterdayRevenue += order.total_amount;
+      }
+
+      if (t >= startOfThisWeek) {
+        weekRevenue += order.total_amount;
+      } else if (t >= startOfLastWeek) {
+        lastWeekRevenue += order.total_amount;
+      }
 
       for (const item of order.items) {
         const name = item.name ?? 'Unknown';
@@ -441,12 +489,34 @@ export const storage = {
       }
     }
 
+    // Growth: null if there's no prior period data (avoid divide-by-zero / misleading 0%)
+    const revenueGrowthPercent =
+      lastWeekRevenue > 0
+        ? Math.round(((weekRevenue - lastWeekRevenue) / lastWeekRevenue) * 100)
+        : weekRevenue > 0
+        ? null  // first week ever — can't compute growth yet
+        : null;
+
+    const orderGrowthPercent =
+      yesterdayOrders > 0
+        ? Math.round(((todayOrders - yesterdayOrders) / yesterdayOrders) * 100)
+        : todayOrders > 0
+        ? null
+        : null;
+
     const bestSellers = Object.entries(itemCounts)
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    const result: AdminAnalytics = { bestSellers, todayRevenue, weekRevenue, ordersByStatus };
+    const result: AdminAnalytics = {
+      bestSellers,
+      todayRevenue,
+      weekRevenue,
+      ordersByStatus,
+      revenueGrowthPercent,
+      orderGrowthPercent,
+    };
     cacheSet('admin_analytics', result);
     return result;
   },

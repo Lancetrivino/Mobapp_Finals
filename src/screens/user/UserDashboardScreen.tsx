@@ -32,10 +32,12 @@ const QUICK_ACTIONS = [
 export default function UserDashboardScreen({ navigation }: any) {
   const { user, logout, updateAvatar } = useAuth();
   const [orderCount, setOrderCount] = useState(0);
-  const [rating] = useState(4.8);
+  const [completedOrderCount, setCompletedOrderCount] = useState(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  // Local preview URI while uploading — shows the new image immediately
+  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -52,34 +54,54 @@ export default function UserDashboardScreen({ navigation }: any) {
   useFocusEffect(
     useCallback(() => {
       loadStats();
-    }, [])
+    }, [user?.id])
   );
 
   const loadStats = async () => {
-    if (user?.id) {
-      const userOrders = await storage.getUserOrders(user.id);
-      setOrderCount(userOrders.length);
-    }
+    if (!user?.id) return;
+    const userOrders = await storage.getUserOrders(user.id);
+    setOrderCount(userOrders.length);
+    setCompletedOrderCount(userOrders.filter((o) => o.status === 'completed').length);
   };
 
   const handlePickAvatar = async () => {
+    // Request permission
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow access to your photo library to set a profile picture.');
+      Alert.alert(
+        'Permission Required',
+        'Please allow access to your photo library in Settings to change your profile picture.',
+        [{ text: 'OK' }]
+      );
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
+
     if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    const uri = result.assets[0].uri;
+
+    // Show local preview immediately for snappy UX
+    setPendingAvatarUri(uri);
     setUploadingAvatar(true);
+
     try {
-      await updateAvatar(result.assets[0].uri);
+      await updateAvatar(uri);
+      // Upload succeeded — clear the pending preview (auth context now has the CDN URL)
+      setPendingAvatarUri(null);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update profile picture.');
+      // Revert the preview on failure
+      setPendingAvatarUri(null);
+      Alert.alert(
+        'Upload Failed',
+        e.message || 'Could not update your profile picture. Please try again.'
+      );
     } finally {
       setUploadingAvatar(false);
     }
@@ -112,6 +134,12 @@ export default function UserDashboardScreen({ navigation }: any) {
       ? { label: 'ADMIN ROLE', color: theme.colors.primary }
       : { label: 'USER ROLE', color: theme.colors.teal };
 
+  // Resolve which avatar URI to show:
+  // 1. pendingAvatarUri (local, while uploading) → instant feedback
+  // 2. user.avatar_url (from Supabase/Cloudinary) → persisted
+  // 3. null → show initials
+  const displayAvatarUri = pendingAvatarUri ?? user?.avatar_url ?? null;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
@@ -133,24 +161,41 @@ export default function UserDashboardScreen({ navigation }: any) {
           {/* Avatar */}
           <View style={styles.avatarSection}>
             <Animated.View style={[styles.avatarWrap, { transform: [{ scale: avatarScaleAnim }] }]}>
-              {user?.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
-              ) : (
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarText}>{initials}</Text>
-                </View>
-              )}
               <TouchableOpacity
-                style={styles.editAvatarBtn}
                 onPress={handlePickAvatar}
-                activeOpacity={0.75}
+                activeOpacity={0.85}
                 disabled={uploadingAvatar}
+                style={styles.avatarTouchable}
               >
+                {displayAvatarUri ? (
+                  <Image
+                    source={{ uri: displayAvatarUri }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarText}>{initials}</Text>
+                  </View>
+                )}
+
+                {/* Camera overlay — always visible so users know it's tappable */}
+                <View style={[styles.avatarOverlay, uploadingAvatar && styles.avatarOverlayActive]}>
+                  {uploadingAvatar ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Feather name="camera" size={18} color="#fff" />
+                  )}
+                </View>
+              </TouchableOpacity>
+
+              {/* Small badge */}
+              <View style={styles.editAvatarBadge}>
                 {uploadingAvatar
                   ? <ActivityIndicator size={10} color="#0D1B2A" />
-                  : <Feather name="camera" size={12} color="#0D1B2A" />}
-              </TouchableOpacity>
+                  : <Feather name="camera" size={10} color="#0D1B2A" />}
+              </View>
             </Animated.View>
+
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
             <View style={[styles.roleBadge, { backgroundColor: roleCfg.color + '25', borderColor: roleCfg.color + '40' }]}>
@@ -158,13 +203,17 @@ export default function UserDashboardScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* Stats */}
+          {/* Stats — real data, no hardcoded values */}
           <View style={styles.statsRow}>
             <StatPill value={orderCount.toString()} label="ORDERS" index={0} />
             <View style={styles.statDivider} />
-            <StatPill value={rating.toFixed(1)} label="RATING" index={1} />
+            <StatPill value={completedOrderCount.toString()} label="COMPLETED" index={1} />
             <View style={styles.statDivider} />
-            <StatPill value="12" label="SHIFTS" index={2} />
+            <StatPill
+              value={orderCount > 0 ? `${Math.round((completedOrderCount / orderCount) * 100)}%` : '—'}
+              label="RATE"
+              index={2}
+            />
           </View>
 
           {/* Quick Actions */}
@@ -487,9 +536,11 @@ const styles = StyleSheet.create({
 
   avatarSection: { alignItems: 'center', paddingVertical: theme.spacing.lg },
   avatarWrap: { position: 'relative', marginBottom: 16 },
+  avatarTouchable: { position: 'relative' },
   avatarImage: {
     width: 90, height: 90, borderRadius: 45,
-    borderWidth: 3, borderColor: theme.colors.primary + '60', ...theme.shadows.medium,
+    borderWidth: 3, borderColor: theme.colors.primary + '60',
+    ...theme.shadows.medium,
   },
   avatarCircle: {
     width: 90, height: 90, borderRadius: 45,
@@ -497,9 +548,21 @@ const styles = StyleSheet.create({
     borderWidth: 3, borderColor: theme.colors.primary + '60', ...theme.shadows.medium,
   },
   avatarText: { fontSize: 32, fontWeight: '800', color: theme.colors.primary },
-  editAvatarBtn: {
+  // Semi-transparent overlay on the avatar to hint it's tappable
+  avatarOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    height: 30, borderBottomLeftRadius: 45, borderBottomRightRadius: 45,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    alignItems: 'center', justifyContent: 'center',
+    opacity: 0.85,
+  },
+  avatarOverlayActive: {
+    top: 0, height: 90, borderRadius: 45,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  editAvatarBadge: {
     position: 'absolute', bottom: 0, right: 0,
-    width: 28, height: 28, borderRadius: 14,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: theme.colors.background,
   },

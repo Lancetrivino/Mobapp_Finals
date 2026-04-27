@@ -30,11 +30,10 @@ const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   Beverage: 'coffee',
 };
 
-// Stable keyExtractor outside the component to avoid re-creation
 const keyExtractor = (item: MenuItem) => item.id;
 const categoryKeyExtractor = (c: string) => c;
 
-export default function MenuBrowseScreen({ navigation }: any) {
+export default function MenuBrowseScreen({ navigation, route }: any) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchText, setSearchText] = useState('');
@@ -50,7 +49,13 @@ export default function MenuBrowseScreen({ navigation }: any) {
   useFocusEffect(
     useCallback(() => {
       loadMenuItems();
-    }, [])
+
+      // Clear cart when returning after a successful order
+      if (route?.params?.orderPlaced) {
+        setCart([]);
+        navigation.setParams({ orderPlaced: false });
+      }
+    }, [route?.params?.orderPlaced])
   );
 
   useEffect(() => {
@@ -73,7 +78,6 @@ export default function MenuBrowseScreen({ navigation }: any) {
     setLoading(false);
   };
 
-  // Derived data — memoized to avoid recalculating on every render
   const categories = React.useMemo(
     () => ['All', ...Array.from(new Set(menuItems.map((i) => i.category)))],
     [menuItems]
@@ -194,7 +198,7 @@ export default function MenuBrowseScreen({ navigation }: any) {
           />
         </View>
 
-        {/* Category chips — fixed height prevents the pill bug */}
+        {/* Category chips */}
         <FlatList
           horizontal
           data={categories}
@@ -202,7 +206,6 @@ export default function MenuBrowseScreen({ navigation }: any) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipScroll}
           renderItem={renderCategory}
-          // Prevent vertical stretch that caused the giant capsule
           style={styles.chipList}
         />
 
@@ -235,14 +238,13 @@ export default function MenuBrowseScreen({ navigation }: any) {
                 { paddingBottom: cartCount > 0 ? 100 : 24 },
               ]}
               showsVerticalScrollIndicator={false}
-              // Performance props
               removeClippedSubviews
               maxToRenderPerBatch={8}
               windowSize={10}
               initialNumToRender={6}
               getItemLayout={(_data, index) => ({
                 length: CARD_WIDTH * (4 / 3) + theme.spacing.md + theme.spacing.md * 2,
-                offset: 0, // approximate; good enough for windowing
+                offset: 0,
                 index,
               })}
             />
@@ -306,7 +308,7 @@ const MenuGridCard: React.FC<{
       Animated.timing(opacityAnim, {
         toValue: 1,
         duration: 300,
-        delay: Math.min(index, 5) * 60, // cap delay at 5 items to avoid long waits
+        delay: Math.min(index, 5) * 60,
         useNativeDriver: true,
       }),
       Animated.spring(slideAnim, {
@@ -341,7 +343,6 @@ const MenuGridCard: React.FC<{
         <Image
           source={{ uri: item.image_url }}
           style={styles.gridItemImage}
-          // Fade in the image once loaded to prevent layout flash
           fadeDuration={200}
         />
       ) : (
@@ -446,8 +447,6 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: theme.colors.text, height: '100%' },
 
-  // ── Category chips ────────────────────────────────────────
-  // chipList constrains the FlatList height so chips never stretch vertically
   chipList: {
     flexGrow: 0,
     flexShrink: 0,
@@ -456,7 +455,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
     gap: 8,
-    alignItems: 'center', // ← prevents vertical stretch that caused the giant capsule bug
+    alignItems: 'center',
   },
   chip: {
     height: 34,
@@ -475,7 +474,6 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600', color: theme.colors.textSecondary },
   chipTextActive: { color: '#0D1B2A', fontWeight: '700' },
 
-  // ── Grid ──────────────────────────────────────────────────
   gridRow: { gap: theme.spacing.md, marginBottom: theme.spacing.md },
   gridContent: { paddingHorizontal: theme.spacing.lg },
   skeletonGrid: { paddingHorizontal: theme.spacing.lg },
@@ -518,12 +516,10 @@ const styles = StyleSheet.create({
     ...theme.shadows.small,
   },
 
-  // ── Empty / loading ───────────────────────────────────────
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
   emptyText: { fontSize: 13, color: theme.colors.textSecondary, textAlign: 'center' },
 
-  // ── Cart bar ──────────────────────────────────────────────
   cartBar: {
     position: 'absolute',
     bottom: 0,

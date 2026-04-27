@@ -73,7 +73,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setIsLoading(false);
           }
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          // Token refreshed silently — no need to refetch profile
           setIsLoading(false);
         }
       }
@@ -126,17 +125,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Email confirmation required
       throw new Error('CONFIRM_EMAIL');
     }
+
+    // Immediate session — fetch and set the profile so the user
+    // lands on the home screen without needing another login
+    if (data.session.user) {
+      const profile = await fetchProfileWithRetry(data.session.user.id);
+      if (profile) setUser(profile);
+    }
   }, []);
 
   const updateProfile = useCallback(async (updates: Partial<Pick<User, 'name'>>) => {
+    // Snapshot current user for rollback
+    const previousUser = await (async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser?.id) return null;
+      return fetchProfile(authUser.id);
+    })();
+
+    // Optimistic update
     setUser((prev) => {
       if (!prev) return prev;
       return { ...prev, ...updates };
     });
 
-    const currentUser = await supabase.auth.getUser();
-    const userId = currentUser.data.user?.id;
-    if (!userId) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const userId = authUser?.id;
+
+    if (!userId) {
+      // No session — roll back optimistic update
+      if (previousUser) setUser(previousUser);
+      return;
+    }
 
     const { error } = await supabase
       .from('users')
@@ -144,17 +163,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .eq('id', userId);
 
     if (error) {
-      // Rollback optimistic update
-      const profile = await fetchProfile(userId);
-      if (profile) setUser(profile);
+      // Roll back to the last known good state
+      const freshProfile = await fetchProfile(userId);
+      if (freshProfile) setUser(freshProfile);
+      else if (previousUser) setUser(previousUser);
       throw new Error(error.message);
     }
   }, []);
 
   const updateAvatar = useCallback(async (uri: string) => {
-    const currentUser = await supabase.auth.getUser();
-    const userId = currentUser.data.user?.id;
-    if (!userId) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const userId = authUser?.id;
+    if (!userId) throw new Error('Not authenticated.');
 
     let finalUri = uri;
 
@@ -189,7 +209,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const { error } = await supabase
       .from('users')
-      .update({ avatar_url: finalUri })
+      .update({ avatar_url: finalUri, updated_at: new Date().toISOString() })
       .eq('id', userId);
 
     if (error) throw new Error(error.message);
