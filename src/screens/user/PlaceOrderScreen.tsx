@@ -13,29 +13,21 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
 import { Button, Input } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
-import { OrderItem, MenuItem, Order } from '../../types/index';
+import { CartItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
 import { Feather } from '@expo/vector-icons';
 
-type CartItem = { menuItemId: string; name: string; quantity: number; price: number };
-
 export default function PlaceOrderScreen({ navigation, route }: any) {
   const { user } = useAuth();
 
-  // Accept cartItems from MenuBrowseScreen or a single item from old flow
   const initialCart: CartItem[] = route?.params?.cartItems ?? [];
-  const singleItem: MenuItem | undefined = route?.params?.item;
 
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    if (initialCart.length > 0) return initialCart;
-    if (singleItem) {
-      return [{ menuItemId: singleItem.id, name: singleItem.name, quantity: 1, price: singleItem.price }];
-    }
-    return [];
-  });
-
-  const [tableNumber, setTableNumber] = useState(route?.params?.tableNumber ?? '');
+  const [cartItems, setCartItems] = useState<CartItem[]>(initialCart);
+  // Pre-fill table number if passed from MenuBrowseScreen (QR / session value)
+  const [tableNumber, setTableNumber] = useState<string>(
+    route?.params?.tableNumber ? String(route.params.tableNumber) : ''
+  );
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -50,42 +42,51 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
     ]).start();
   }, []);
 
-  const updateQty = (menuItemId: string, delta: number) => {
+  const updateQty = (menu_item_id: string, delta: number) => {
     setCartItems((prev) =>
       prev
-        .map((c) => c.menuItemId === menuItemId ? { ...c, quantity: c.quantity + delta } : c)
+        .map((c) => c.menu_item_id === menu_item_id ? { ...c, quantity: c.quantity + delta } : c)
         .filter((c) => c.quantity > 0)
     );
   };
 
   const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const validate = () => {
+  const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (cartItems.length === 0) e.cart = 'Please add at least one item.';
-    if (!tableNumber.trim()) e.tableNumber = 'Table number is required.';
-    else if (isNaN(Number(tableNumber)) || Number(tableNumber) <= 0) e.tableNumber = 'Enter a valid table number.';
+    if (cartItems.length === 0) {
+      e.cart = 'Please add at least one item.';
+    }
+    const tableNum = Number(tableNumber.trim());
+    if (!tableNumber.trim()) {
+      e.tableNumber = 'Table number is required.';
+    } else if (!Number.isInteger(tableNum) || tableNum <= 0 || tableNum > 200) {
+      e.tableNumber = 'Enter a valid table number (1–200).';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handlePlaceOrder = async () => {
     if (!validate() || !user?.id) return;
+
     setLoading(true);
     try {
-      const orderItems = cartItems.map(({ menuItemId, quantity, price }) => ({
-        menu_item_id: menuItemId,
-        quantity,
-        price,
-      }));
-
-      const newOrder = await storage.createOrder(user.id, orderItems, totalAmount, tableNumber.trim(), notes.trim() || undefined);
+      const newOrder = await storage.createOrder(
+        user.id,
+        cartItems,
+        totalAmount,
+        Number(tableNumber.trim()),
+        notes.trim() || undefined
+      );
 
       if (newOrder) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Order Placed!', `Order #${newOrder.id.slice(-6)} has been placed.`, [
-          { text: 'OK', onPress: () => navigation.navigate('MyOrders') },
-        ]);
+        Alert.alert(
+          'Order Placed! 🎉',
+          `Order #${newOrder.id.slice(-6).toUpperCase()} for Table ${newOrder.table_number} has been submitted.`,
+          [{ text: 'View My Orders', onPress: () => navigation.navigate('MyOrders') }]
+        );
         setCartItems([]);
         setTableNumber('');
         setNotes('');
@@ -93,7 +94,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
         Alert.alert('Error', 'Failed to place order. Please try again.');
       }
     } catch (error) {
-      console.error('Order placement error:', error);
+      console.error('[PlaceOrderScreen] handlePlaceOrder:', error);
       Alert.alert('Error', 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
@@ -111,7 +112,9 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
         </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Place Order</Text>
-          <Text style={styles.headerSub}>{cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart</Text>
+          <Text style={styles.headerSub}>
+            {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart
+          </Text>
         </View>
       </View>
 
@@ -123,7 +126,10 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
           <Input
             placeholder="e.g. 8"
             value={tableNumber}
-            onChangeText={(t) => { setTableNumber(t); setErrors((e) => ({ ...e, tableNumber: undefined })); }}
+            onChangeText={(t) => {
+              setTableNumber(t);
+              setErrors((e) => ({ ...e, tableNumber: undefined }));
+            }}
             keyboardType="numeric"
             error={errors.tableNumber}
             icon="hash"
@@ -135,12 +141,21 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
             <View style={styles.emptyCart}>
               <Feather name="shopping-cart" size={32} color={theme.colors.textMuted} />
               <Text style={styles.emptyCartText}>Your cart is empty.</Text>
-              <Button title="Browse Menu" onPress={() => navigation.navigate('MenuBrowse')} variant="secondary" />
+              <Button
+                title="Browse Menu"
+                onPress={() => navigation.navigate('MenuBrowse')}
+                variant="secondary"
+              />
             </View>
           ) : (
             <View style={styles.cartList}>
               {cartItems.map((item, index) => (
-                <CartRow key={item.menuItemId} item={item} index={index} onUpdateQty={updateQty} />
+                <CartRow
+                  key={item.menu_item_id}
+                  item={item}
+                  index={index}
+                  onUpdateQty={updateQty}
+                />
               ))}
             </View>
           )}
@@ -168,6 +183,12 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>₱{totalAmount.toFixed(2)}</Text>
               </View>
+              {tableNumber.trim() !== '' && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Table</Text>
+                  <Text style={styles.summaryValue}>#{tableNumber.trim()}</Text>
+                </View>
+              )}
               <View style={styles.divider} />
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryTotalLabel}>Total</Text>
@@ -177,7 +198,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
           )}
 
           <Button
-            title={loading ? 'Placing Order...' : 'Place Order'}
+            title="Place Order"
             onPress={handlePlaceOrder}
             loading={loading}
             disabled={cartItems.length === 0}
@@ -208,7 +229,7 @@ const CartRow: React.FC<{
   const renderRightActions = () => (
     <TouchableOpacity
       style={styles.swipeDelete}
-      onPress={() => onUpdateQty(item.menuItemId, -item.quantity)}
+      onPress={() => onUpdateQty(item.menu_item_id, -item.quantity)}
       activeOpacity={0.8}
     >
       <Feather name="trash-2" size={20} color="#fff" />
@@ -223,11 +244,19 @@ const CartRow: React.FC<{
           <Text style={styles.cartItemUnitPrice}>₱{item.price.toFixed(2)} each</Text>
         </View>
         <View style={styles.qtyRow}>
-          <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(item.menuItemId, -1)} activeOpacity={0.75}>
+          <TouchableOpacity
+            style={styles.qtyBtn}
+            onPress={() => onUpdateQty(item.menu_item_id, -1)}
+            activeOpacity={0.75}
+          >
             <Feather name="minus" size={14} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.qtyText}>{item.quantity}</Text>
-          <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onUpdateQty(item.menuItemId, 1)} activeOpacity={0.75}>
+          <TouchableOpacity
+            style={[styles.qtyBtn, styles.qtyBtnAdd]}
+            onPress={() => onUpdateQty(item.menu_item_id, 1)}
+            activeOpacity={0.75}
+          >
             <Feather name="plus" size={14} color="#0D1B2A" />
           </TouchableOpacity>
         </View>
@@ -257,13 +286,11 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3 },
   headerSub: { fontSize: 12, color: theme.colors.textSecondary, marginTop: 1 },
   scrollContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 40 },
-
   sectionLabel: {
     fontSize: 11, fontWeight: '700', color: theme.colors.textMuted,
     letterSpacing: 1.4, textTransform: 'uppercase',
     marginBottom: theme.spacing.sm, marginTop: theme.spacing.md,
   },
-
   emptyCart: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
@@ -274,7 +301,6 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   emptyCartText: { fontSize: 14, color: theme.colors.textSecondary },
-
   cartList: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
@@ -292,6 +318,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     gap: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
   },
   cartItemInfo: { flex: 1 },
   cartItemName: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: 2 },
@@ -307,7 +334,6 @@ const styles = StyleSheet.create({
   qtyBtnAdd: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   qtyText: { fontSize: 15, fontWeight: '700', color: theme.colors.text, minWidth: 20, textAlign: 'center' },
   cartItemTotal: { fontSize: 14, fontWeight: '700', color: theme.colors.primary, minWidth: 56, textAlign: 'right' },
-
   summaryCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.large,
@@ -323,10 +349,8 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: 8 },
   summaryTotalLabel: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
   summaryTotal: { fontSize: 22, fontWeight: '800', color: theme.colors.primary },
-
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: theme.spacing.sm },
   errorText: { fontSize: 12, color: theme.colors.error, fontWeight: '500' },
-
   swipeDelete: {
     backgroundColor: theme.colors.error,
     justifyContent: 'center',
