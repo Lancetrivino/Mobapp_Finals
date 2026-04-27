@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, memo } from 'react';
 import {
   View,
   StyleSheet,
@@ -30,13 +30,31 @@ export default function MyOrdersScreen({ navigation }: any) {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const loadOrders = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const userOrders = await storage.getUserOrders(user.id);
+      const sorted = [...userOrders].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setOrders(sorted);
+
+      const completedIds = sorted.filter((o) => o.status === 'completed').map((o) => o.id);
+      const rated = await storage.getRatedOrderIds(user.id, completedIds);
+      setRatedOrders(rated);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user?.id) return;
 
     loadOrders();
     Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
 
-    // ── Supabase Realtime subscription ──────────────────────
+    // Realtime subscription — scoped to this user's orders
     const channel = supabase
       .channel(`my-orders-${user.id}`)
       .on(
@@ -48,34 +66,28 @@ export default function MyOrdersScreen({ navigation }: any) {
             if (updated.status === 'ready') {
               Alert.alert('🍽️ Order Ready!', `Order #${updated.id.slice(-6).toUpperCase()} is ready to be served!`);
             }
-            // Apply status delta locally — avoids re-fetching all orders
+            // Optimistic status update — avoids a full reload
             setOrders((prev) =>
-              prev.map((o) => o.id === updated.id ? { ...o, status: updated.status } : o)
+              prev.map((o) => (o.id === updated.id ? { ...o, status: updated.status } : o))
+            );
+            // Keep detail modal in sync
+            setDetailOrder((prev) =>
+              prev?.id === updated.id ? { ...prev, status: updated.status } : prev
             );
           } else {
-            // INSERT or DELETE requires a full reload
+            // INSERT / DELETE requires full reload
             loadOrders();
           }
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadOrders]);
 
-  const loadOrders = useCallback(async () => {
-    if (!user?.id) return;
-    setLoading(true);
-    const userOrders = await storage.getUserOrders(user.id);
-    setOrders(userOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-
-    const completedIds = userOrders.filter((o) => o.status === 'completed').map((o) => o.id);
-    const rated = await storage.getRatedOrderIds(user.id, completedIds);
-    setRatedOrders(rated);
-    setLoading(false);
-  }, [user?.id]);
-
-  const handleCancelOrder = (order: Order) => {
+  const handleCancelOrder = useCallback((order: Order) => {
     Alert.alert(
       'Cancel Order',
       `Cancel order #${order.id.slice(-6).toUpperCase()}? This cannot be undone.`,
@@ -96,9 +108,9 @@ export default function MyOrdersScreen({ navigation }: any) {
         },
       ]
     );
-  };
+  }, [loadOrders]);
 
-  const handleSubmitRating = async () => {
+  const handleSubmitRating = useCallback(async () => {
     if (!pendingRating || !user?.id || pendingRating.stars === 0) return;
     setSubmittingRating(true);
     const ok = await storage.addRating({
@@ -114,19 +126,25 @@ export default function MyOrdersScreen({ navigation }: any) {
     } else {
       Alert.alert('Error', 'Failed to submit rating. Please try again.');
     }
-  };
+  }, [pendingRating, user?.id]);
 
-  const activeOrders  = orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled');
-  const historyOrders = orders.filter((o) => o.status === 'completed'  || o.status === 'cancelled');
+  const closeDetail = useCallback(() => setDetailOrder(null), []);
+  const closePendingRating = useCallback(() => setPendingRating(null), []);
 
-  const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Derived — split once per render
+  const activeOrders = orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled');
+  const historyOrders = orders.filter((o) => o.status === 'completed' || o.status === 'cancelled');
+
+  const formatDate = useCallback(
+    (date: string) =>
+      new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    []
+  );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
-
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My Orders</Text>
           <Text style={styles.headerSub}>{orders.length} order{orders.length !== 1 ? 's' : ''} total</Text>
@@ -191,30 +209,32 @@ export default function MyOrdersScreen({ navigation }: any) {
         <View style={styles.overlay}>
           <View style={styles.modal}>
             {detailOrder && (() => {
-              const cfg = STATUS_CONFIG[detailOrder.status] || { color: theme.colors.textMuted, label: detailOrder.status, icon: 'circle' as const };
+              const cfg = STATUS_CONFIG[detailOrder.status] || {
+                color: theme.colors.textMuted,
+                label: detailOrder.status,
+                icon: 'circle' as const,
+              };
               const canCancel = detailOrder.status === 'pending';
-              const canRate   = detailOrder.status === 'completed' && !ratedOrders.has(detailOrder.id);
+              const canRate = detailOrder.status === 'completed' && !ratedOrders.has(detailOrder.id);
               return (
                 <>
                   <View style={styles.modalHandle} />
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Order #{detailOrder.id.slice(-6).toUpperCase()}</Text>
-                    <TouchableOpacity onPress={() => setDetailOrder(null)}>
+                    <TouchableOpacity onPress={closeDetail}>
                       <Feather name="x" size={22} color={theme.colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
 
-                  {/* Status badge */}
                   <View style={[styles.statusBadge, { backgroundColor: cfg.color + '20' }]}>
                     <Feather name={cfg.icon} size={14} color={cfg.color} />
                     <Text style={[styles.statusBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
                   </View>
 
-                  {detailOrder.table_number && (
+                  {detailOrder.table_number != null && (
                     <Text style={styles.modalMeta}>Table {detailOrder.table_number}</Text>
                   )}
 
-                  {/* Itemized receipt */}
                   <Text style={styles.modalSectionLabel}>Items</Text>
                   {detailOrder.items.map((it, idx) => (
                     <View key={idx} style={styles.detailRow}>
@@ -244,11 +264,14 @@ export default function MyOrdersScreen({ navigation }: any) {
                     {canRate && (
                       <Button
                         title="Rate This Order"
-                        onPress={() => { setDetailOrder(null); setPendingRating({ order: detailOrder, stars: 0 }); }}
+                        onPress={() => {
+                          closeDetail();
+                          setPendingRating({ order: detailOrder, stars: 0 });
+                        }}
                         variant="secondary"
                       />
                     )}
-                    <Button title="Close" onPress={() => setDetailOrder(null)} variant="outline" />
+                    <Button title="Close" onPress={closeDetail} variant="outline" />
                   </View>
                 </>
               );
@@ -271,7 +294,7 @@ export default function MyOrdersScreen({ navigation }: any) {
               {[1, 2, 3, 4, 5].map((star) => (
                 <TouchableOpacity
                   key={star}
-                  onPress={() => setPendingRating((p) => p ? { ...p, stars: star } : p)}
+                  onPress={() => setPendingRating((p) => (p ? { ...p, stars: star } : p))}
                   activeOpacity={0.7}
                 >
                   <Feather
@@ -294,7 +317,7 @@ export default function MyOrdersScreen({ navigation }: any) {
                 loading={submittingRating}
                 disabled={!pendingRating?.stars}
               />
-              <Button title="Skip" onPress={() => setPendingRating(null)} variant="outline" />
+              <Button title="Skip" onPress={closePendingRating} variant="outline" />
             </View>
           </View>
         </View>
@@ -304,7 +327,7 @@ export default function MyOrdersScreen({ navigation }: any) {
 }
 
 // ─── Skeleton Row ──────────────────────────────────────────
-const SkeletonOrderRow: React.FC = () => {
+const SkeletonOrderRow: React.FC = memo(() => {
   const shimmer = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(
@@ -322,7 +345,7 @@ const SkeletonOrderRow: React.FC = () => {
       <View style={{ height: 11, backgroundColor: theme.colors.surfaceHigh, borderRadius: 6, width: '70%' }} />
     </Animated.View>
   );
-};
+});
 
 // ─── Active Order Card ─────────────────────────────────────
 const ActiveOrderCard: React.FC<{
@@ -330,10 +353,10 @@ const ActiveOrderCard: React.FC<{
   index: number;
   onPress: () => void;
   onCancel?: () => void;
-}> = ({ order, index, onPress, onCancel }) => {
-  const slideAnim   = useRef(new Animated.Value(20)).current;
+}> = memo(({ order, index, onPress, onCancel }) => {
+  const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim   = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -365,7 +388,7 @@ const ActiveOrderCard: React.FC<{
         <Text style={styles.activeOrderId}>#{order.id.slice(-6).toUpperCase()}</Text>
       </View>
 
-      {order.table_number && (
+      {order.table_number != null && (
         <Text style={styles.activeTableText}>Table {order.table_number}</Text>
       )}
 
@@ -386,7 +409,7 @@ const ActiveOrderCard: React.FC<{
       </View>
 
       <View style={styles.activeCardActions}>
-        <TouchableOpacity style={styles.helpBtn} onPress={onPress} activeOpacity={0.8} >
+        <TouchableOpacity style={styles.helpBtn} onPress={onPress} activeOpacity={0.8}>
           <Feather name="info" size={14} color={theme.colors.textSecondary} />
           <Text style={styles.helpBtnText}>Order Details</Text>
         </TouchableOpacity>
@@ -399,7 +422,7 @@ const ActiveOrderCard: React.FC<{
       </View>
     </Animated.View>
   );
-};
+});
 
 // ─── History Row ───────────────────────────────────────────
 const HistoryOrderRow: React.FC<{
@@ -409,8 +432,8 @@ const HistoryOrderRow: React.FC<{
   isRated: boolean;
   onPress: () => void;
   onRate?: () => void;
-}> = ({ order, index, formatDate, isRated, onPress, onRate }) => {
-  const slideAnim   = useRef(new Animated.Value(16)).current;
+}> = memo(({ order, index, formatDate, isRated, onPress, onRate }) => {
+  const slideAnim = useRef(new Animated.Value(16)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -426,16 +449,12 @@ const HistoryOrderRow: React.FC<{
     <Animated.View style={[styles.historyRow, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
       <TouchableOpacity style={styles.historyMain} onPress={onPress} activeOpacity={0.8}>
         <View style={[styles.historyIcon, { backgroundColor: isCompleted ? theme.colors.successLight : theme.colors.errorLight }]}>
-          <Feather
-            name={isCompleted ? 'check-circle' : 'x-circle'}
-            size={20}
-            color={isCompleted ? theme.colors.success : theme.colors.error}
-          />
+          <Feather name={isCompleted ? 'check-circle' : 'x-circle'} size={20} color={isCompleted ? theme.colors.success : theme.colors.error} />
         </View>
         <View style={styles.historyInfo}>
           <Text style={styles.historyName}>
             {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-            {order.table_number ? ` · Table ${order.table_number}` : ''}
+            {order.table_number != null ? ` · Table ${order.table_number}` : ''}
           </Text>
           <Text style={styles.historyMeta}>
             {formatDate(order.created_at)} · ₱{order.total_amount.toFixed(2)}
@@ -457,54 +476,25 @@ const HistoryOrderRow: React.FC<{
       )}
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  header: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: 56,
-    paddingBottom: theme.spacing.lg,
-  },
+  header: { paddingHorizontal: theme.spacing.lg, paddingTop: 56, paddingBottom: theme.spacing.lg },
   headerTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' },
   scrollContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 24 },
 
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: theme.colors.textMuted,
-    letterSpacing: 1.4, textTransform: 'uppercase',
-    marginBottom: theme.spacing.md, marginTop: theme.spacing.xs,
-  },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: theme.colors.textMuted, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: theme.spacing.md, marginTop: theme.spacing.xs },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: theme.spacing.xl },
-  emptyIcon: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border,
-  },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text },
   emptyText: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center' },
 
-  // Active card
-  activeCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.large,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary + '60',
-    ...theme.shadows.medium,
-  },
-  activeCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.sm,
-  },
-  activeStatusRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: theme.borderRadius.full,
-  },
+  activeCard: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, padding: theme.spacing.md, marginBottom: theme.spacing.md, borderWidth: 1.5, borderColor: theme.colors.primary + '60', ...theme.shadows.medium },
+  activeCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.sm },
+  activeStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.borderRadius.full },
   activeStatusText: { fontSize: 12, fontWeight: '700' },
   activeOrderId: { fontSize: 13, fontWeight: '700', color: theme.colors.textMuted },
   activeTableText: { fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600', marginBottom: theme.spacing.sm },
@@ -512,112 +502,45 @@ const styles = StyleSheet.create({
   activeItemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   activeItemName: { fontSize: 13, fontWeight: '600', color: theme.colors.text, flex: 1, marginRight: 8 },
   activeItemPrice: { fontSize: 13, fontWeight: '600', color: theme.colors.text },
-  activeCardFooter: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderTopWidth: 1, borderTopColor: theme.colors.border,
-    paddingTop: theme.spacing.sm, marginBottom: theme.spacing.sm,
-  },
+  activeCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: theme.spacing.sm, marginBottom: theme.spacing.sm },
   activeTotalLabel: { fontSize: 13, color: theme.colors.textSecondary, fontWeight: '600' },
   activeTotalText: { fontSize: 18, fontWeight: '800', color: theme.colors.primary },
   activeCardActions: { flexDirection: 'row', gap: 8 },
-  helpBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: theme.borderRadius.medium,
-    paddingVertical: 10,
-    borderWidth: 1, borderColor: theme.colors.border,
-  },
+  helpBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.colors.surfaceHigh, borderRadius: theme.borderRadius.medium, paddingVertical: 10, borderWidth: 1, borderColor: theme.colors.border },
   helpBtnText: { fontSize: 13, color: theme.colors.textSecondary, fontWeight: '600' },
-  cancelBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: theme.colors.errorLight,
-    borderRadius: theme.borderRadius.medium,
-    paddingVertical: 10, paddingHorizontal: 16,
-    borderWidth: 1, borderColor: theme.colors.error + '40',
-  },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.colors.errorLight, borderRadius: theme.borderRadius.medium, paddingVertical: 10, paddingHorizontal: 16, borderWidth: 1, borderColor: theme.colors.error + '40' },
   cancelBtnText: { fontSize: 13, color: theme.colors.error, fontWeight: '700' },
 
-  // History row
-  historyRow: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.large,
-    marginBottom: theme.spacing.sm,
-    borderWidth: 1, borderColor: theme.colors.border,
-    overflow: 'hidden',
-    ...theme.shadows.small,
-  },
-  historyMain: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: theme.spacing.md, gap: theme.spacing.md,
-  },
-  historyIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  historyRow: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, marginBottom: theme.spacing.sm, borderWidth: 1, borderColor: theme.colors.border, overflow: 'hidden', ...theme.shadows.small },
+  historyMain: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.md, gap: theme.spacing.md },
+  historyIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   historyInfo: { flex: 1 },
   historyName: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: 3 },
   historyMeta: { fontSize: 12, color: theme.colors.textMuted, marginBottom: 2 },
   historyRated: { fontSize: 11, fontWeight: '600' },
-  rateBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderTopWidth: 1, borderTopColor: theme.colors.border,
-    paddingVertical: 10,
-    backgroundColor: '#F5A62310',
-  },
+  rateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingVertical: 10, backgroundColor: '#F5A62310' },
   rateBtnText: { fontSize: 13, fontWeight: '700', color: '#F5A623' },
 
-  // Modal
   overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
-  modal: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: theme.spacing.lg, paddingBottom: 40,
-    borderTopWidth: 1, borderColor: theme.colors.border,
-  },
+  modal: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: theme.spacing.lg, paddingBottom: 40, borderTopWidth: 1, borderColor: theme.colors.border },
   ratingModal: { paddingBottom: 48 },
-  modalHandle: {
-    width: 40, height: 4, backgroundColor: theme.colors.borderStrong,
-    borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.md,
-  },
+  modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.borderStrong, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.md },
   modalTitle: { fontSize: 20, fontWeight: '700', color: theme.colors.text },
-  statusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: theme.borderRadius.full, marginBottom: theme.spacing.md,
-  },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: theme.borderRadius.full, marginBottom: theme.spacing.md },
   statusBadgeText: { fontSize: 13, fontWeight: '700' },
   modalMeta: { fontSize: 14, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm },
-  modalSectionLabel: {
-    fontSize: 11, fontWeight: '700', color: theme.colors.textMuted,
-    textTransform: 'uppercase', letterSpacing: 0.8,
-    marginBottom: theme.spacing.sm, marginTop: theme.spacing.xs,
-  },
-  detailRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.border,
-  },
+  modalSectionLabel: { fontSize: 11, fontWeight: '700', color: theme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: theme.spacing.sm, marginTop: theme.spacing.xs },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   detailItemText: { fontSize: 14, color: theme.colors.text, flex: 1, marginRight: 8 },
   detailItemPrice: { fontSize: 14, fontWeight: '700', color: theme.colors.text },
-  modalTotal: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-  },
+  modalTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: theme.spacing.md },
   modalTotalLabel: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
   modalTotalValue: { fontSize: 24, fontWeight: '800', color: theme.colors.primary },
   modalBtnCol: { gap: theme.spacing.sm },
 
-  // Rating
   ratingTitle: { fontSize: 22, fontWeight: '800', color: theme.colors.text, textAlign: 'center', marginBottom: 4 },
   ratingSubtitle: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', marginBottom: theme.spacing.xl },
-  starsRow: {
-    flexDirection: 'row', justifyContent: 'center', gap: 12,
-    marginBottom: theme.spacing.lg,
-  },
-  ratingHint: {
-    fontSize: 13, color: theme.colors.textMuted, textAlign: 'center',
-    marginBottom: theme.spacing.md,
-  },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: theme.spacing.lg },
+  ratingHint: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center', marginBottom: theme.spacing.md },
 });

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -23,7 +23,7 @@ export const Button: React.FC<{
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'outline' | 'success' | 'danger';
   icon?: keyof typeof Feather.glyphMap;
-}> = ({ title, onPress, loading = false, disabled = false, variant = 'primary', icon }) => {
+}> = memo(({ title, onPress, loading = false, disabled = false, variant = 'primary', icon }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () =>
@@ -72,7 +72,7 @@ export const Button: React.FC<{
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 // ─── Input ─────────────────────────────────────────────────
 export const Input: React.FC<{
@@ -84,7 +84,7 @@ export const Input: React.FC<{
   keyboardType?: KeyboardTypeOptions;
   error?: string;
   icon?: keyof typeof Feather.glyphMap;
-}> = ({
+}> = memo(({
   placeholder,
   value,
   onChangeText,
@@ -121,19 +121,19 @@ export const Input: React.FC<{
       )}
     </>
   );
-};
+});
 
 // ─── Card ──────────────────────────────────────────────────
-export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ children, style }) => {
-  return <View style={[styles.card, style]}>{children}</View>;
-};
+export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = memo(
+  ({ children, style }) => <View style={[styles.card, style]}>{children}</View>
+);
 
 // ─── Animated Card (for lists) ─────────────────────────────
 export const AnimatedCard: React.FC<{
   children: React.ReactNode;
   style?: ViewStyle;
   index?: number;
-}> = ({ children, style, index = 0 }) => {
+}> = memo(({ children, style, index = 0 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(24)).current;
 
@@ -160,22 +160,20 @@ export const AnimatedCard: React.FC<{
       {children}
     </Animated.View>
   );
-};
+});
 
 // ─── Header ────────────────────────────────────────────────
-export const Header: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => {
-  return (
-    <View style={styles.headerContainer}>
-      <Text style={styles.headerTitle}>{title}</Text>
-      {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
-    </View>
-  );
-};
+export const Header: React.FC<{ title: string; subtitle?: string }> = memo(({ title, subtitle }) => (
+  <View style={styles.headerContainer}>
+    <Text style={styles.headerTitle}>{title}</Text>
+    {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
+  </View>
+));
 
 // ─── Section Label ─────────────────────────────────────────
-export const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
+export const SectionLabel: React.FC<{ label: string }> = memo(({ label }) => (
   <Text style={styles.sectionLabel}>{label}</Text>
-);
+));
 
 // ─── Stat Card ─────────────────────────────────────────────
 export const StatCard: React.FC<{
@@ -184,7 +182,7 @@ export const StatCard: React.FC<{
   iconName?: keyof typeof Feather.glyphMap;
   color?: string;
   subtitle?: string;
-}> = ({ label, value, iconName, color = theme.colors.primary, subtitle }) => {
+}> = memo(({ label, value, iconName, color = theme.colors.primary, subtitle }) => {
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -211,7 +209,7 @@ export const StatCard: React.FC<{
       {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
     </Animated.View>
   );
-};
+});
 
 // ─── Menu Item Card (admin list view) ──────────────────────
 export const MenuItemCard: React.FC<{
@@ -221,40 +219,39 @@ export const MenuItemCard: React.FC<{
   category: string;
   available: boolean;
   onOrder: () => void;
-}> = ({ name, description, price, category, available, onOrder }) => {
-  return (
-    <Card style={styles.menuItemCard}>
-      <View style={styles.menuItemHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.menuItemName}>{name}</Text>
-          <Text style={styles.menuItemCategory}>{category}</Text>
-        </View>
-        <Text style={styles.menuItemPrice}>₱{price.toFixed(2)}</Text>
+}> = memo(({ name, description, price, category, available, onOrder }) => (
+  <Card style={styles.menuItemCard}>
+    <View style={styles.menuItemHeader}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.menuItemName}>{name}</Text>
+        <Text style={styles.menuItemCategory}>{category}</Text>
       </View>
-      <Text style={styles.menuItemDescription}>{description}</Text>
-      <TouchableOpacity
-        style={[styles.menuItemButton, !available && styles.menuItemButtonDisabled]}
-        onPress={onOrder}
-        disabled={!available}
-        activeOpacity={0.75}
-      >
-        <Text style={[styles.menuItemButtonText, !available && { color: theme.colors.textMuted }]}>
-          {available ? '+ Add to Order' : 'Out of Stock'}
-        </Text>
-      </TouchableOpacity>
-    </Card>
-  );
-};
+      <Text style={styles.menuItemPrice}>₱{price.toFixed(2)}</Text>
+    </View>
+    <Text style={styles.menuItemDescription}>{description}</Text>
+    <TouchableOpacity
+      style={[styles.menuItemButton, !available && styles.menuItemButtonDisabled]}
+      onPress={onOrder}
+      disabled={!available}
+      activeOpacity={0.75}
+    >
+      <Text style={[styles.menuItemButtonText, !available && { color: theme.colors.textMuted }]}>
+        {available ? '+ Add to Order' : 'Out of Stock'}
+      </Text>
+    </TouchableOpacity>
+  </Card>
+));
 
 // ─── Badge ─────────────────────────────────────────────────
-export const Badge: React.FC<{ label: string; color: string }> = ({ label, color }) => (
+export const Badge: React.FC<{ label: string; color: string }> = memo(({ label, color }) => (
   <View style={[styles.badge, { backgroundColor: color + '25', borderColor: color + '50' }]}>
     <Text style={[styles.badgeText, { color }]}>{label}</Text>
   </View>
-);
+));
 
 // ─── Background Texture ────────────────────────────────────
-export const BackgroundTexture: React.FC = () => {
+// Heavy SVG — rendered once, memoized
+export const BackgroundTexture: React.FC = memo(() => {
   const { width, height } = Dimensions.get('window');
   return (
     <Svg
@@ -271,7 +268,7 @@ export const BackgroundTexture: React.FC = () => {
       <Rect width={width} height={height} fill="url(#dots)" />
     </Svg>
   );
-};
+});
 
 // ─── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
