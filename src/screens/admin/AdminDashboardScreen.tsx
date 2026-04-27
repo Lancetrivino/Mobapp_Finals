@@ -14,6 +14,13 @@ import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
 import { Feather } from '@expo/vector-icons';
 
+type Analytics = {
+  bestSellers: { name: string; count: number }[];
+  todayRevenue: number;
+  weekRevenue: number;
+  ordersByStatus: Record<string, number>;
+};
+
 const TOOL_CARDS = [
   {
     title: 'Menu Management',
@@ -41,6 +48,7 @@ const TOOL_CARDS = [
 export default function AdminDashboardScreen({ navigation }: any) {
   const { logout, user } = useAuth();
   const [stats, setStats] = useState({ totalOrders: 0, activeOrders: 0, totalUsers: 0, revenue: 0 });
+  const [analytics, setAnalytics] = useState<Analytics>({ bestSellers: [], todayRevenue: 0, weekRevenue: 0, ordersByStatus: {} });
 
   // Mount animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -60,7 +68,11 @@ export default function AdminDashboardScreen({ navigation }: any) {
   );
 
   const loadStats = async () => {
-    const [orders, users] = await Promise.all([storage.getOrders(), storage.getUsers()]);
+    const [orders, users, analyticsData] = await Promise.all([
+      storage.getOrders(),
+      storage.getUsers(),
+      storage.getAdminAnalytics(),
+    ]);
     const active = orders.filter(
       (o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing'
     ).length;
@@ -68,6 +80,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
       .filter((o) => o.status === 'completed')
       .reduce((sum, o) => sum + o.total_amount, 0);
     setStats({ totalOrders: orders.length, activeOrders: active, totalUsers: users.length, revenue });
+    setAnalytics(analyticsData);
   };
 
   const activeRatio = stats.totalOrders > 0 ? Math.min(stats.activeOrders / 20, 1) : 0;
@@ -153,6 +166,40 @@ export default function AdminDashboardScreen({ navigation }: any) {
               />
             ))}
           </View>
+
+          {/* ANALYTICS */}
+          <Text style={styles.sectionLabel}>ANALYTICS — LAST 7 DAYS</Text>
+
+          {/* Revenue row */}
+          <View style={styles.revenueRow}>
+            <View style={styles.revenueCard}>
+              <Text style={styles.revenueLabel}>Today</Text>
+              <Text style={styles.revenueValue}>{formatRevenue(analytics.todayRevenue)}</Text>
+            </View>
+            <View style={[styles.revenueCard, styles.revenueCardAccent]}>
+              <Text style={styles.revenueLabel}>This Week</Text>
+              <Text style={[styles.revenueValue, { color: theme.colors.primary }]}>{formatRevenue(analytics.weekRevenue)}</Text>
+            </View>
+          </View>
+
+          {/* Best sellers */}
+          {analytics.bestSellers.length > 0 && (
+            <View style={styles.bestSellersCard}>
+              <View style={styles.bestSellersHeader}>
+                <Feather name="trending-up" size={14} color={theme.colors.accent} />
+                <Text style={styles.bestSellersTitle}>Best Sellers</Text>
+              </View>
+              {analytics.bestSellers.map((item, idx) => (
+                <View key={item.name} style={styles.bestSellerRow}>
+                  <View style={styles.bestSellerRank}>
+                    <Text style={styles.bestSellerRankText}>{idx + 1}</Text>
+                  </View>
+                  <Text style={styles.bestSellerName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.bestSellerCount}>{item.count} sold</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </Animated.View>
       </ScrollView>
     </View>
@@ -416,6 +463,91 @@ const styles = StyleSheet.create({
   toolsContainer: {
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.lg,
+  },
+
+  revenueRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  revenueCard: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.small,
+  },
+  revenueCardAccent: {
+    borderColor: theme.colors.primary + '40',
+  },
+  revenueLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  revenueValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: theme.colors.text,
+    letterSpacing: -0.5,
+  },
+
+  bestSellersCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.small,
+  },
+  bestSellersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: theme.spacing.md,
+  },
+  bestSellersTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  bestSellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: 7,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  bestSellerRank: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: theme.colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bestSellerRankText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: theme.colors.accent,
+  },
+  bestSellerName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  bestSellerCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
   },
   toolCard: {
     backgroundColor: theme.colors.surface,

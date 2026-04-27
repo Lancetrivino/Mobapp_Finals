@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { AuthContextType, User } from '../types/index';
 import { supabase } from '../lib/supabase';
 
@@ -145,13 +146,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateAvatar = async (uri: string) => {
     if (!user) return;
 
+    let finalUri = uri;
+
+    // If the avatar is a local file, upload it to Cloudinary first
+    if (uri && !uri.startsWith('http')) {
+      const data = new FormData();
+      
+      // Make sure to create an Unsigned preset named "user_avatar" in your Cloudinary settings!
+      data.append('upload_preset', 'user_avatar'); 
+      data.append('cloud_name', 'dykaegsup');
+
+      if (Platform.OS === 'web') {
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        data.append('file', blob);
+      } else {
+        const filename = uri.split('/').pop() || 'avatar.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const ext = match ? match[1].toLowerCase() : 'jpg';
+        const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        data.append('file', { uri, name: filename, type } as any);
+      }
+
+      const response = await fetch(`https://api.cloudinary.com/v1_1/dykaegsup/image/upload`, {
+        method: 'POST',
+        body: data,
+        headers: { Accept: 'application/json' },
+      });
+
+      const result = await response.json();
+      if (result.secure_url) finalUri = result.secure_url;
+      else throw new Error(result.error?.message || 'Cloudinary upload failed');
+    }
+
     const { error } = await supabase
       .from('users')
-      .update({ avatar_url: uri })
+      .update({ avatar_url: finalUri })
       .eq('id', user.id);
 
     if (error) throw new Error(error.message);
-    setUser({ ...user, avatar_url: uri });
+    setUser({ ...user, avatar_url: finalUri });
   };
 
   return (

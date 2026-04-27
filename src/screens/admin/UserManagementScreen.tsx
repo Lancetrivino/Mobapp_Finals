@@ -13,7 +13,8 @@ import {
 import { Button, Input } from '../../components/UIComponents';
 import { theme } from '../../utils/theme';
 import { User } from '../../types/index';
-import { storage } from '../../utils/storage';
+// ─── IMPORTANT: Point this to your lib file ───
+import { supabase } from '../../lib/supabase'; 
 import { useAuth } from '../../context/AuthContext';
 import { Feather } from '@expo/vector-icons';
 
@@ -42,16 +43,20 @@ export default function UserManagementScreen() {
 
   const loadUsers = async () => {
     setLoading(true);
-    const data = await storage.getUsers();
-    setUsers(data);
-    setLoading(false);
-  };
+    try {
+      // Query the live public.users table
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const openAdd = () => {
-    setEditingUser(null);
-    setForm(emptyForm);
-    setErrors({});
-    setModalVisible(true);
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (e: any) {
+      Alert.alert('Database Error', e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openEdit = (u: User) => {
@@ -70,28 +75,25 @@ export default function UserManagementScreen() {
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
-    const allUsers = await storage.getUsers();
-    if (editingUser) {
-      const dup = allUsers.find((u) => u.email.toLowerCase() === form.email.toLowerCase() && u.id !== editingUser.id);
-      if (dup) { setErrors((e) => ({ ...e, email: 'Email already in use.' })); return; }
-      await storage.setUsers(
-        allUsers.map((u) =>
-          u.id === editingUser.id
-            ? { ...u, name: form.name.trim(), email: form.email.trim(), role: form.role }
-            : u
-        )
-      );
-    } else {
-      const dup = allUsers.find((u) => u.email.toLowerCase() === form.email.toLowerCase());
-      if (dup) { setErrors((e) => ({ ...e, email: 'Email already in use.' })); return; }
-      await storage.setUsers([
-        ...allUsers,
-        { id: Date.now().toString(), name: form.name.trim(), email: form.email.trim(), role: form.role },
-      ]);
+    if (!editingUser || !validate()) return;
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: form.name.trim(),
+          email: form.email.trim(),
+          role: form.role,
+        })
+        .eq('id', editingUser.id);
+
+      if (error) throw error;
+
+      setModalVisible(false);
+      loadUsers();
+    } catch (e: any) {
+      Alert.alert('Update Failed', e.message);
     }
-    setModalVisible(false);
-    loadUsers();
   };
 
   const handleDelete = (u: User) => {
@@ -103,9 +105,16 @@ export default function UserManagementScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
-          const all = await storage.getUsers();
-          await storage.setUsers(all.filter((x) => x.id !== u.id));
-          loadUsers();
+          const { error } = await supabase
+            .from('users')
+            .delete()
+            .eq('id', u.id);
+          
+          if (error) {
+            Alert.alert('Delete Failed', error.message);
+          } else {
+            loadUsers();
+          }
         },
       },
     ]);
@@ -127,25 +136,19 @@ export default function UserManagementScreen() {
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>User Management</Text>
-            <Text style={styles.headerSub}>{users.length} accounts</Text>
+            <Text style={styles.headerTitle}>Staff Accounts</Text>
+            <Text style={styles.headerSub}>{users.length} registered</Text>
           </View>
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.8}>
-            <Feather name="user-plus" size={18} color="#0D1B2A" />
-          </TouchableOpacity>
         </View>
 
         {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading users...</Text>
-          </View>
+          <View style={styles.emptyState}><Text style={styles.emptyText}>Syncing with Database...</Text></View>
         ) : users.length === 0 ? (
           <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Feather name="users" size={32} color={theme.colors.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>No Users Yet</Text>
-            <Text style={styles.emptyText}>Tap + to add a staff account.</Text>
+            <View style={styles.emptyIcon}><Feather name="users" size={32} color={theme.colors.textMuted} /></View>
+            <Text style={styles.emptyTitle}>No Accounts Found</Text>
+            <Text style={styles.emptyText}>If users exist in SQL, check your RLS policies.</Text>
+            <Button title="Retry Refresh" onPress={loadUsers} variant="outline" style={{marginTop: 20}} />
           </View>
         ) : (
           <FlatList
@@ -158,13 +161,12 @@ export default function UserManagementScreen() {
         )}
       </Animated.View>
 
-      {/* Add / Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingUser ? 'Edit User' : 'Add New User'}</Text>
+              <Text style={styles.modalTitle}>Edit Account</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Feather name="x" size={22} color={theme.colors.textSecondary} />
               </TouchableOpacity>
@@ -180,23 +182,16 @@ export default function UserManagementScreen() {
                   key={r}
                   style={[styles.roleBtn, form.role === r && { backgroundColor: ROLE_CONFIG[r].color }]}
                   onPress={() => setForm({ ...form, role: r })}
-                  activeOpacity={0.75}
                 >
-                  <Feather
-                    name={ROLE_CONFIG[r].icon}
-                    size={14}
-                    color={form.role === r ? '#0D1B2A' : theme.colors.textSecondary}
-                  />
-                  <Text style={[styles.roleBtnText, form.role === r && { color: '#0D1B2A', fontWeight: '700' }]}>
-                    {ROLE_CONFIG[r].label}
-                  </Text>
+                  <Feather name={ROLE_CONFIG[r].icon} size={14} color={form.role === r ? '#0D1B2A' : theme.colors.textSecondary} />
+                  <Text style={[styles.roleBtnText, form.role === r && { color: '#0D1B2A', fontWeight: '700' }]}>{ROLE_CONFIG[r].label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <View style={styles.modalActions}>
               <Button title="Cancel" onPress={() => setModalVisible(false)} variant="outline" />
-              <Button title={editingUser ? 'Save Changes' : 'Add User'} onPress={handleSave} />
+              <Button title="Save Changes" onPress={handleSave} />
             </View>
           </View>
         </View>
@@ -205,7 +200,7 @@ export default function UserManagementScreen() {
   );
 }
 
-// ─── User Row ──────────────────────────────────────────────
+// ─── User Row Component (Keep logic as is, just ensure it handles the Supabase User type) ───
 const UserRow: React.FC<{
   user: User;
   index: number;
@@ -224,12 +219,7 @@ const UserRow: React.FC<{
   }, []);
 
   const roleCfg = ROLE_CONFIG[user.role] || ROLE_CONFIG.user;
-  const initials = user.name
-    .split(' ')
-    .map((n) => n.charAt(0))
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+  const initials = user.name.split(' ').map((n) => n.charAt(0)).slice(0, 2).join('').toUpperCase() || '??';
 
   return (
     <Animated.View style={[styles.userCard, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -238,10 +228,7 @@ const UserRow: React.FC<{
       </View>
       <View style={styles.userInfo}>
         <View style={styles.userInfoTop}>
-          <Text style={styles.userName}>
-            {user.name}
-            {isCurrentUser && <Text style={styles.youBadge}> (You)</Text>}
-          </Text>
+          <Text style={styles.userName} numberOfLines={1}>{user.name}{isCurrentUser && <Text style={styles.youBadge}> (You)</Text>}</Text>
           <View style={[styles.rolePill, { backgroundColor: roleCfg.color + '20' }]}>
             <Feather name={roleCfg.icon} size={10} color={roleCfg.color} />
             <Text style={[styles.roleText, { color: roleCfg.color }]}>{roleCfg.label}</Text>
@@ -254,11 +241,7 @@ const UserRow: React.FC<{
             <Text style={[styles.actionBtnText, { color: theme.colors.blue }]}>Edit</Text>
           </TouchableOpacity>
           {!isCurrentUser && (
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: theme.colors.errorLight }]}
-              onPress={() => onDelete(user)}
-              activeOpacity={0.75}
-            >
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.colors.errorLight }]} onPress={() => onDelete(user)}>
               <Feather name="trash-2" size={13} color={theme.colors.error} />
               <Text style={[styles.actionBtnText, { color: theme.colors.error }]}>Delete</Text>
             </TouchableOpacity>
@@ -269,106 +252,38 @@ const UserRow: React.FC<{
   );
 };
 
+// ... Styles (remain the same as your previous code)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: 56,
-    paddingBottom: theme.spacing.lg,
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: theme.spacing.lg, paddingTop: 56, paddingBottom: theme.spacing.lg },
   headerTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' },
-  addBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: theme.colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    ...theme.shadows.medium,
-  },
   listContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 24 },
-
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },
-  emptyIcon: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border,
-  },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text },
-  emptyText: { fontSize: 14, color: theme.colors.textSecondary },
-
-  userCard: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.large,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    gap: theme.spacing.md,
-    alignItems: 'flex-start',
-    ...theme.shadows.small,
-  },
-  avatarCircle: {
-    width: 48, height: 48, borderRadius: 24,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text, marginTop: 12 },
+  emptyText: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', paddingHorizontal: 40 },
+  userCard: { flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, padding: theme.spacing.md, marginBottom: theme.spacing.sm, borderWidth: 1, borderColor: theme.colors.border, gap: theme.spacing.md, alignItems: 'flex-start', ...theme.shadows.small },
+  avatarCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 16, fontWeight: '800' },
   userInfo: { flex: 1 },
   userInfoTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
   userName: { fontSize: 15, fontWeight: '700', color: theme.colors.text, flex: 1, marginRight: 8 },
   youBadge: { fontSize: 12, color: theme.colors.primary, fontStyle: 'italic' },
-  rolePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: theme.borderRadius.full,
-  },
+  rolePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.borderRadius.full },
   roleText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   userEmail: { fontSize: 12, color: theme.colors.textMuted, marginBottom: theme.spacing.sm },
   userActions: { flexDirection: 'row', gap: 8 },
-  actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: theme.borderRadius.small,
-    backgroundColor: theme.colors.blueLight,
-  },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.borderRadius.small, backgroundColor: theme.colors.blueLight },
   actionBtnText: { fontSize: 12, fontWeight: '700' },
-
   overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
-  modal: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: theme.spacing.lg, paddingBottom: 40,
-    borderTopWidth: 1, borderColor: theme.colors.border,
-  },
-  modalHandle: {
-    width: 40, height: 4, backgroundColor: theme.colors.borderStrong,
-    borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg,
-  },
+  modal: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: theme.spacing.lg, paddingBottom: 40, borderTopWidth: 1, borderColor: theme.colors.border },
+  modalHandle: { width: 40, height: 4, backgroundColor: theme.colors.borderStrong, borderRadius: 2, alignSelf: 'center', marginBottom: theme.spacing.lg },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg },
   modalTitle: { fontSize: 20, fontWeight: '700', color: theme.colors.text },
-  fieldLabel: {
-    fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary,
-    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: theme.spacing.sm,
-  },
-  roleToggleRow: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.medium,
-    padding: 4,
-    marginBottom: theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    gap: 4,
-  },
-  roleBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 11,
-    borderRadius: theme.borderRadius.medium - 2,
-    backgroundColor: 'transparent',
-  },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: theme.spacing.sm },
+  roleToggleRow: { flexDirection: 'row', backgroundColor: theme.colors.background, borderRadius: theme.borderRadius.medium, padding: 4, marginBottom: theme.spacing.lg, borderWidth: 1, borderColor: theme.colors.border, gap: 4 },
+  roleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: theme.borderRadius.medium - 2 },
   roleBtnText: { fontSize: 14, fontWeight: '600', color: theme.colors.textMuted },
   modalActions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
 });

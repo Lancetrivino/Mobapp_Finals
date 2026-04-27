@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// You'll need to replace these with your actual Supabase project URL and anon key
 const supabaseUrl = 'https://ekefwbvwpmwmiosaotzf.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrZWZ3YnZ3cG13bWlvc2FvdHpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2NDI0OTksImV4cCI6MjA5MjIxODQ5OX0.X7F6WIz8Zrx2SM26RbbvZQ7hA36qi8DRyGl2a3TY_F4';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// We pass the Database interface here to enable type-safety across the app
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -14,7 +14,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Database types (you'll need to create these tables in Supabase)
 export interface Database {
   public: {
     Tables: {

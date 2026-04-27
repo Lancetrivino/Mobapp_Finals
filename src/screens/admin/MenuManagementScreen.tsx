@@ -11,6 +11,7 @@ import {
   Animated,
   StatusBar,
   Image,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Input } from '../../components/UIComponents';
@@ -35,14 +36,21 @@ const CLOUDINARY_UPLOAD_PRESET = 'menu_item'; // Must be set to "Unsigned" in Cl
 
 const uploadToCloudinary = async (fileUri: string): Promise<string> => {
   const data = new FormData();
-  const filename = fileUri.split('/').pop() || 'upload.jpg';
-  const match = /\.(\w+)$/.exec(filename);
-  // Normalize extension to lowercase to avoid issues with HEIC etc.
-  const ext = match ? match[1].toLowerCase() : 'jpeg';
-  const type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-
-  data.append('file', { uri: fileUri, name: filename, type } as any);
   data.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+  if (Platform.OS === 'web') {
+    const res = await fetch(fileUri);
+    const blob = await res.blob();
+    data.append('file', blob);
+  } else {
+    const filename = fileUri.split('/').pop() || 'upload.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    // Normalize extension to lowercase to avoid issues with HEIC etc.
+    const ext = match ? match[1].toLowerCase() : 'jpeg';
+    const type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    data.append('file', { uri: fileUri, name: filename, type } as any);
+  }
+
   // NOTE: Do NOT manually set Content-Type here. Let fetch set it automatically
   // so it includes the correct multipart boundary. Setting it manually strips
   // the boundary and Cloudinary will fail to parse the request body.
@@ -60,11 +68,6 @@ const uploadToCloudinary = async (fileUri: string): Promise<string> => {
   );
 
   const result = await response.json();
-
-  // Log full response in development to help debug issues
-  if (__DEV__) {
-    console.log('Cloudinary response:', JSON.stringify(result));
-  }
 
   if (result.secure_url) {
     return result.secure_url;
@@ -144,47 +147,43 @@ export default function MenuManagementScreen() {
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
-    setIsSubmitting(true);
+  if (!validate()) return;
+  setIsSubmitting(true);
 
-    try {
-      let imageUrl = form.image;
+  try {
+    let imageUrl = form.image;
 
-      // Only upload if the user picked a new local file (starts with file://)
-      if (imageUrl && imageUrl.startsWith('file://')) {
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      try {
         imageUrl = await uploadToCloudinary(imageUrl);
+      } catch (uploadError: any) {
+        throw uploadError;
       }
-
-      const itemData = {
-        name: form.name.trim(),
-        description: form.description.trim(),
-        price: parseFloat(form.price),
-        category: form.category,
-        image_url: imageUrl || undefined,
-        available: editingItem ? editingItem.available : true,
-      };
-
-      if (editingItem) {
-        const success = await storage.updateMenuItem(editingItem.id, itemData);
-        if (success) {
-          setModalVisible(false);
-          loadMenuItems();
-        }
-      } else {
-        const newItem = await storage.addMenuItem(itemData);
-        if (newItem) {
-          setModalVisible(false);
-          loadMenuItems();
-        }
-      }
-    } catch (error: any) {
-      console.error('Save error:', error);
-      Alert.alert('Upload Failed', error?.message || 'Failed to save the menu item. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
-  };
 
+    const itemData = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      price: parseFloat(form.price),
+      category: form.category,
+      image_url: imageUrl || undefined,
+      available: editingItem ? editingItem.available : true,
+    };
+
+    if (editingItem) {
+      const success = await storage.updateMenuItem(editingItem.id, itemData);
+      if (success) { setModalVisible(false); loadMenuItems(); }
+    } else {
+      const newItem = await storage.addMenuItem(itemData);
+      if (newItem) { setModalVisible(false); loadMenuItems(); }
+    }
+  } catch (error: any) {
+    console.error('Save error:', error);
+    Alert.alert('Upload Failed', error?.message || 'Failed to save. Please try again.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   const handleDelete = (item: MenuItem) => {
     Alert.alert('Delete Item', `Delete "${item.name}"?`, [
       { text: 'Cancel', style: 'cancel' },

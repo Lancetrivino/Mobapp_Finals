@@ -16,6 +16,8 @@ export interface MenuItem {
   category: string;
   image_url?: string;
   available: boolean;
+  avg_rating?: number;
+  rating_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -26,6 +28,8 @@ export interface Order {
   items: OrderItem[];
   total_amount: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  table_number?: string;
+  notes?: string;
   created_at: string;
   updated_at: string;
 }
@@ -34,8 +38,17 @@ export interface OrderItem {
   id?: string;
   order_id?: string;
   menu_item_id: string;
+  name?: string;
   quantity: number;
   price: number;
+  created_at?: string;
+}
+
+export interface Rating {
+  id?: string;
+  user_id: string;
+  order_id: string;
+  stars: number;
   created_at?: string;
 }
 

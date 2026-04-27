@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { User, MenuItem, Order, OrderItem } from '../types/index';
+import { User, MenuItem, Order, OrderItem, Rating } from '../types/index';
 
 export const storage = {
   // ─── Menu Items ────────────────────────────────────────────
@@ -85,7 +85,7 @@ export const storage = {
           *,
           order_items (
             *,
-            menu_items (*)
+            menu_items (name)
           )
         `)
         .order('created_at', { ascending: false });
@@ -95,12 +95,11 @@ export const storage = {
       // Transform the data to match our Order interface
       return (data || []).map(order => ({
         ...order,
-        userId: order.user_id,
-        totalAmount: order.total_amount,
-        createdAt: new Date(order.created_at),
-        updatedAt: new Date(order.updated_at),
         items: order.order_items?.map((item: any) => ({
-          menuItemId: item.menu_item_id,
+          id: item.id,
+          order_id: item.order_id,
+          menu_item_id: item.menu_item_id,
+          name: item.menu_items?.name ?? 'Unknown Item',
           quantity: item.quantity,
           price: item.price,
         })) || [],
@@ -119,7 +118,7 @@ export const storage = {
           *,
           order_items (
             *,
-            menu_items (*)
+            menu_items (name)
           )
         `)
         .eq('user_id', userId)
@@ -129,12 +128,11 @@ export const storage = {
 
       return (data || []).map(order => ({
         ...order,
-        userId: order.user_id,
-        totalAmount: order.total_amount,
-        createdAt: new Date(order.created_at),
-        updatedAt: new Date(order.updated_at),
         items: order.order_items?.map((item: any) => ({
-          menuItemId: item.menu_item_id,
+          id: item.id,
+          order_id: item.order_id,
+          menu_item_id: item.menu_item_id,
+          name: item.menu_items?.name ?? 'Unknown Item',
           quantity: item.quantity,
           price: item.price,
         })) || [],
@@ -145,15 +143,16 @@ export const storage = {
     }
   },
 
-  createOrder: async (userId: string, items: OrderItem[], totalAmount: number): Promise<Order | null> => {
+  createOrder: async (userId: string, items: OrderItem[], totalAmount: number, tableNumber?: string, notes?: string): Promise<Order | null> => {
     try {
-      // Start a transaction-like operation
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert([{
           user_id: userId,
           total_amount: totalAmount,
           status: 'pending',
+          table_number: tableNumber || null,
+          notes: notes || null,
         }])
         .select()
         .single();
@@ -176,10 +175,6 @@ export const storage = {
 
       return {
         ...orderData,
-        userId: orderData.user_id,
-        totalAmount: orderData.total_amount,
-        createdAt: new Date(orderData.created_at),
-        updatedAt: new Date(orderData.updated_at),
         items,
       };
     } catch (e) {
@@ -203,6 +198,114 @@ export const storage = {
     } catch (e) {
       console.error('updateOrderStatus:', e);
       return false;
+    }
+  },
+
+  cancelOrder: async (orderId: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+        .eq('status', 'pending')
+        .select('id');
+
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Only pending orders can be cancelled.');
+      return true;
+    } catch (e: any) {
+      console.error('cancelOrder:', e);
+      throw e;
+    }
+  },
+
+  addRating: async (rating: Rating): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('ratings')
+        .upsert([{
+          user_id: rating.user_id,
+          order_id: rating.order_id,
+          stars: rating.stars,
+        }], { onConflict: 'user_id,order_id' });
+
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error('addRating:', e);
+      return false;
+    }
+  },
+
+  getRatedOrderIds: async (userId: string, orderIds: string[]): Promise<Set<string>> => {
+    if (orderIds.length === 0) return new Set();
+    try {
+      const { data } = await supabase
+        .from('ratings')
+        .select('order_id')
+        .eq('user_id', userId)
+        .in('order_id', orderIds);
+      return new Set((data || []).map((r: any) => r.order_id));
+    } catch {
+      return new Set();
+    }
+  },
+
+  getAdminAnalytics: async (): Promise<{
+    bestSellers: { name: string; count: number }[];
+    todayRevenue: number;
+    weekRevenue: number;
+    ordersByStatus: Record<string, number>;
+  }> => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const [{ data: orderItems }, { data: orders }] = await Promise.all([
+        supabase
+          .from('order_items')
+          .select('menu_item_id, quantity, menu_items(name)')
+          .gte('created_at', weekAgo.toISOString())
+          .limit(1000),
+        supabase
+          .from('orders')
+          .select('total_amount, status, created_at')
+          .gte('created_at', weekAgo.toISOString()),
+      ]);
+
+      // Best sellers
+      const counts: Record<string, { name: string; count: number }> = {};
+      (orderItems || []).forEach((item: any) => {
+        const id = item.menu_item_id;
+        const name = item.menu_items?.name || 'Unknown';
+        if (!counts[id]) counts[id] = { name, count: 0 };
+        counts[id].count += item.quantity;
+      });
+      const bestSellers = Object.values(counts)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      // Revenue
+      const todayRevenue = (orders || [])
+        .filter((o: any) => o.status === 'completed' && new Date(o.created_at) >= today)
+        .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+
+      const weekRevenue = (orders || [])
+        .filter((o: any) => o.status === 'completed')
+        .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+
+      // Orders by status
+      const ordersByStatus: Record<string, number> = {};
+      (orders || []).forEach((o: any) => {
+        ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1;
+      });
+
+      return { bestSellers, todayRevenue, weekRevenue, ordersByStatus };
+    } catch (e) {
+      console.error('getAdminAnalytics:', e);
+      return { bestSellers: [], todayRevenue: 0, weekRevenue: 0, ordersByStatus: {} };
     }
   },
 
@@ -298,6 +401,37 @@ export const storage = {
       }
     } catch (e) {
       console.error('seedDefaultData:', e);
+    }
+  },
+
+  addUser: async (user: Omit<User, 'created_at' | 'updated_at'>): Promise<User | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .insert([user])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      console.error('addUser:', e);
+      return null;
+    }
+  },
+
+  deleteUser: async (id: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error('deleteUser:', e);
+      return false;
     }
   },
 

@@ -12,8 +12,10 @@ import {
   Dimensions,
 } from 'react-native';
 import { theme } from '../../utils/theme';
+import { ORDER_STATUS_CONFIG as STATUS_CONFIG } from '../../utils/orderStatus';
 import { Order } from '../../types/index';
 import { storage } from '../../utils/storage';
+import { supabase } from '../../lib/supabase';
 import { Feather } from '@expo/vector-icons';
 import { Button } from '../../components/UIComponents';
 
@@ -21,15 +23,6 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_WIDTH = SCREEN_WIDTH * 0.72;
 
 const STATUS_FLOW: Order['status'][] = ['pending', 'confirmed', 'preparing', 'ready', 'completed'];
-
-const STATUS_CONFIG: Record<string, { color: string; label: string; icon: string }> = {
-  pending: { color: theme.colors.warning, label: 'Pending', icon: 'clock' },
-  confirmed: { color: theme.colors.blue, label: 'Confirmed', icon: 'check' },
-  preparing: { color: theme.colors.accent, label: 'Preparing', icon: 'zap' },
-  ready: { color: theme.colors.success, label: 'Ready', icon: 'check-circle' },
-  completed: { color: '#27AE60', label: 'Served', icon: 'check-circle' },
-  cancelled: { color: theme.colors.error, label: 'Cancelled', icon: 'x-circle' },
-};
 
 const KANBAN_COLUMNS = [
   { key: 'pending', label: 'Pending', color: theme.colors.warning, statuses: ['pending'] as Order['status'][] },
@@ -47,6 +40,17 @@ export default function OrderManagementScreen() {
   useEffect(() => {
     loadOrders();
     Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+
+    const channel = supabase
+      .channel('admin-orders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => { loadOrders(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadOrders = async () => {
@@ -88,10 +92,8 @@ export default function OrderManagementScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          const all = await storage.getOrders();
-          await storage.setOrders(all.filter((o) => o.id !== order.id));
-          setDetailOrder(null);
-          loadOrders();
+          const { error } = await supabase.from('orders').delete().eq('id', order.id);
+          if (!error) { setDetailOrder(null); loadOrders(); }
         },
       },
     ]);
@@ -187,11 +189,16 @@ export default function OrderManagementScreen() {
                   </Text>
                 </View>
 
-                <Text style={styles.modalSection}>Table: {(detailOrder as any).tableNumber || 'N/A'}</Text>
+                {detailOrder.table_number && (
+                  <Text style={styles.modalSection}>Table: {detailOrder.table_number}</Text>
+                )}
+                {detailOrder.notes && (
+                  <Text style={styles.modalSection}>Notes: {detailOrder.notes}</Text>
+                )}
                 <Text style={styles.modalSection}>Items</Text>
                 {detailOrder.items.map((it, idx) => (
                   <View key={idx} style={styles.detailItemRow}>
-                    <Text style={styles.detailItemText}>{idx + 1}x item · ₱{it.price.toFixed(2)}</Text>
+                    <Text style={styles.detailItemText}>{it.quantity}× {it.name || `Item #${idx + 1}`}</Text>
                     <Text style={styles.detailItemPrice}>₱{(it.quantity * it.price).toFixed(2)}</Text>
                   </View>
                 ))}
@@ -267,7 +274,7 @@ const KanbanCard: React.FC<{
         <View style={styles.kanbanItems}>
           {order.items.map((item, idx) => (
             <View key={idx} style={styles.kanbanItemRow}>
-              <Text style={styles.kanbanItemName} numberOfLines={1}>{item.quantity}x Item #{idx + 1}</Text>
+              <Text style={styles.kanbanItemName} numberOfLines={1}>{item.quantity}× {item.name || `Item #${idx + 1}`}</Text>
               <Text style={styles.kanbanItemPrice}>₱{(item.price * item.quantity).toFixed(2)}</Text>
             </View>
           ))}

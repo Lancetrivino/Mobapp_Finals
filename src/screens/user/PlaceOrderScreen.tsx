@@ -79,7 +79,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
         price,
       }));
 
-      const newOrder = await storage.createOrder(user.id, orderItems, totalAmount);
+      const newOrder = await storage.createOrder(user.id, orderItems, totalAmount, tableNumber.trim(), notes.trim() || undefined);
 
       if (newOrder) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
