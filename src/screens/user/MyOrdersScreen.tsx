@@ -11,7 +11,9 @@ import {
   StatusBar,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { ORDER_STATUS_CONFIG as STATUS_CONFIG } from '../../utils/orderStatus';
 import { Order } from '../../types/index';
 import { storage } from '../../utils/storage';
@@ -22,6 +24,8 @@ import { Button } from '../../components/UIComponents';
 
 export default function MyOrdersScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
@@ -156,7 +160,7 @@ export default function MyOrdersScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My Orders</Text>
@@ -591,7 +595,7 @@ const HistoryOrderRow: React.FC<{
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   header: {
     paddingHorizontal: theme.spacing.lg,

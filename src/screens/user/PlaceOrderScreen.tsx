@@ -12,7 +12,9 @@ import {
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
 import { Button, Input } from '../../components/UIComponents';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { CartItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +22,8 @@ import { Feather } from '@expo/vector-icons';
 
 export default function PlaceOrderScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
 
   const initialCart: CartItem[] = route?.params?.cartItems ?? [];
   const [cartItems, setCartItems] = useState<CartItem[]>(initialCart);
@@ -108,7 +112,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={handleGoBack} activeOpacity={0.7}>
@@ -253,7 +257,7 @@ const CartRow: React.FC<{
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   header: {
     flexDirection: 'row',

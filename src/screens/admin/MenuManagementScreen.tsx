@@ -15,7 +15,9 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Input } from '../../components/UIComponents';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { MenuItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { Feather } from '@expo/vector-icons';
@@ -70,6 +72,8 @@ const uploadToCloudinary = async (fileUri: string): Promise<string> => {
 };
 
 export default function MenuManagementScreen() {
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -205,7 +209,7 @@ export default function MenuManagementScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         <View style={styles.header}>
           <View>
@@ -434,7 +438,7 @@ const MenuItemRow: React.FC<{
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

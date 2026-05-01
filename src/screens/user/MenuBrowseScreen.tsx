@@ -14,13 +14,15 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { MenuItem, CartItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { Feather } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - theme.spacing.lg * 2 - theme.spacing.md) / 2;
+const CARD_WIDTH = (width - 24 * 2 - 16) / 2;
 
 const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   All: 'grid',
@@ -34,6 +36,8 @@ const keyExtractor = (item: MenuItem) => item.id;
 const categoryKeyExtractor = (c: string) => c;
 
 export default function MenuBrowseScreen({ navigation, route }: any) {
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchText, setSearchText] = useState('');
@@ -175,7 +179,7 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         {/* Header */}
         <View style={styles.header}>
@@ -423,7 +427,7 @@ const SkeletonCard: React.FC = memo(() => {
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
 
   header: {
