@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   KeyboardTypeOptions,
   ViewStyle,
+  StyleProp,
   Animated,
   Dimensions,
 } from 'react-native';
@@ -140,7 +141,7 @@ export const Input: React.FC<{
 });
 
 // ─── Card ──────────────────────────────────────────────────
-export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = memo(
+export const Card: React.FC<{ children: React.ReactNode; style?: StyleProp<ViewStyle> }> = memo(
   ({ children, style }) => {
     const { theme } = useAppTheme();
     const styles = useStyles(theme);
@@ -151,7 +152,7 @@ export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = 
 // ─── Animated Card (for lists) ─────────────────────────────
 export const AnimatedCard: React.FC<{
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   index?: number;
 }> = memo(({ children, style, index = 0 }) => {
   const { theme } = useAppTheme();
@@ -210,7 +211,11 @@ export const StatCard: React.FC<{
   iconName?: keyof typeof Feather.glyphMap;
   color?: string;
   subtitle?: string;
-}> = memo(({ label, value, iconName, color = theme.colors.primary, subtitle }) => {
+}> = memo(({ label, value, iconName, color, subtitle }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+  const displayColor = color || theme.colors.primary;
+
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -225,15 +230,15 @@ export const StatCard: React.FC<{
     <Animated.View
       style={[
         styles.statCard,
-        { borderColor: color + '30' },
+        { borderColor: displayColor + '30' },
         { opacity, transform: [{ scale }] },
       ]}
     >
-      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
-        {iconName && <Feather name={iconName} size={20} color={color} />}
+      <View style={[styles.statIconWrap, { backgroundColor: displayColor + '20' }]}>
+        {iconName && <Feather name={iconName} size={20} color={displayColor} />}
       </View>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
+      <Text style={[styles.statValue, { color: displayColor }]}>{value}</Text>
       {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
     </Animated.View>
   );
@@ -247,35 +252,43 @@ export const MenuItemCard: React.FC<{
   category: string;
   available: boolean;
   onOrder: () => void;
-}> = memo(({ name, description, price, category, available, onOrder }) => (
-  <Card style={styles.menuItemCard}>
-    <View style={styles.menuItemHeader}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.menuItemName}>{name}</Text>
-        <Text style={styles.menuItemCategory}>{category}</Text>
+}> = memo(({ name, description, price, category, available, onOrder }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+  return (
+    <Card style={styles.menuItemCard}>
+      <View style={styles.menuItemHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.menuItemName}>{name}</Text>
+          <Text style={styles.menuItemCategory}>{category}</Text>
+        </View>
+        <Text style={styles.menuItemPrice}>₱{price.toFixed(2)}</Text>
       </View>
-      <Text style={styles.menuItemPrice}>₱{price.toFixed(2)}</Text>
-    </View>
-    <Text style={styles.menuItemDescription}>{description}</Text>
-    <TouchableOpacity
-      style={[styles.menuItemButton, !available && styles.menuItemButtonDisabled]}
-      onPress={onOrder}
-      disabled={!available}
-      activeOpacity={0.75}
-    >
-      <Text style={[styles.menuItemButtonText, !available && { color: theme.colors.textMuted }]}>
-        {available ? '+ Add to Order' : 'Out of Stock'}
-      </Text>
-    </TouchableOpacity>
-  </Card>
-));
+      <Text style={styles.menuItemDescription}>{description}</Text>
+      <TouchableOpacity
+        style={[styles.menuItemButton, !available && styles.menuItemButtonDisabled]}
+        onPress={onOrder}
+        disabled={!available}
+        activeOpacity={0.75}
+      >
+        <Text style={[styles.menuItemButtonText, !available && { color: theme.colors.textMuted }]}>
+          {available ? '+ Add to Order' : 'Out of Stock'}
+        </Text>
+      </TouchableOpacity>
+    </Card>
+  );
+});
 
 // ─── Badge ─────────────────────────────────────────────────
-export const Badge: React.FC<{ label: string; color: string }> = memo(({ label, color }) => (
-  <View style={[styles.badge, { backgroundColor: color + '25', borderColor: color + '50' }]}>
-    <Text style={[styles.badgeText, { color }]}>{label}</Text>
-  </View>
-));
+export const Badge: React.FC<{ label: string; color: string }> = memo(({ label, color }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+  return (
+    <View style={[styles.badge, { backgroundColor: color + '25', borderColor: color + '50' }]}>
+      <Text style={[styles.badgeText, { color }]}>{label}</Text>
+    </View>
+  );
+});
 
 // ─── Background Texture ────────────────────────────────────
 // Heavy SVG — rendered once, memoized
@@ -494,5 +507,3 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
-
-const styles = createStyles(theme);

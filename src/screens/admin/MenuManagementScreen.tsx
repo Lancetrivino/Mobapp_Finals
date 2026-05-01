@@ -360,6 +360,8 @@ const MenuItemRow: React.FC<{
   onDelete: (item: MenuItem) => void;
   onToggle: (item: MenuItem) => void;
 }> = ({ item, index, onEdit, onDelete, onToggle }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const slideAnim = useRef(new Animated.Value(30)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 

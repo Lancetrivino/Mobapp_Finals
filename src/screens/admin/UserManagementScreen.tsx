@@ -284,6 +284,8 @@ const UserRow: React.FC<{
   onEdit: (u: User) => void;
   onDelete: (u: User) => void;
 }> = ({ user, index, isCurrentUser, onEdit, onDelete }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const slideAnim = useRef(new Animated.Value(30)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 

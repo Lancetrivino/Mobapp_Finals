@@ -283,6 +283,8 @@ const KanbanCard: React.FC<{
   onTap: () => void;
   timeAgo: string;
 }> = ({ order, index, colColor, onAdvance, onTap, timeAgo }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const entryY = useRef(new Animated.Value(20)).current;
   const slideX = useRef(new Animated.Value(0)).current;
@@ -364,6 +366,8 @@ const KanbanCard: React.FC<{
 
 // ─── Skeleton Card ─────────────────────────────────────────
 const SkeletonOrderCard: React.FC = () => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const shimmer = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(

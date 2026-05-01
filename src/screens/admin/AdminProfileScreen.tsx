@@ -10,23 +10,19 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useAppTheme } from '../../context/ThemeContext';
-import { useThemedStyles } from '../../utils/themed';
-import { AppTheme } from '../../utils/theme';
 import { useAuth } from '../../context/AuthContext';
+import { theme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
 import { Feather } from '@expo/vector-icons';
 
 const QUICK_ACTIONS = [
-  { label: 'Menu Management', icon: 'book-open' as const, route: 'Menu', color: '#E8B86D' },
-  { label: 'Order Management', icon: 'clipboard' as const, route: 'Orders', color: '#10B981' },
-  { label: 'User Management', icon: 'users' as const, route: 'Users', color: '#14B8A6' },
+  { label: 'Menu Management', icon: 'book-open' as const, route: 'Menu', color: theme.colors.primary },
+  { label: 'Order Management', icon: 'clipboard' as const, route: 'Orders', color: theme.colors.accent },
+  { label: 'User Management', icon: 'users' as const, route: 'Users', color: theme.colors.teal },
 ];
 
 export default function AdminProfileScreen({ navigation }: any) {
   const { user, logout } = useAuth();
-  const { theme, mode, toggleTheme } = useAppTheme();
-  const styles = useThemedStyles(createStyles, theme);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalMenuItems, setTotalMenuItems] = useState(0);
   const [totalUsers, setTotalUsers] = useState(0);
@@ -76,19 +72,14 @@ export default function AdminProfileScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
 
       {/* Header bar */}
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>Admin Profile</Text>
-        <View style={styles.topBarActions}>
-          <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme} activeOpacity={0.8}>
-            <Feather name={mode === 'dark' ? 'sun' : 'moon'} size={18} color={theme.colors.text} />
-          </TouchableOpacity>
-          <View style={styles.adminBadge}>
-            <Feather name="shield" size={13} color={theme.colors.primary} />
-            <Text style={styles.adminBadgeText}>ADMIN</Text>
-          </View>
+        <View style={styles.adminBadge}>
+          <Feather name="shield" size={13} color={theme.colors.primary} />
+          <Text style={styles.adminBadgeText}>ADMIN</Text>
         </View>
       </View>
 
@@ -214,7 +205,7 @@ const ActionRow: React.FC<{
   );
 };
 
-const createStyles = (theme: AppTheme) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   topBar: {
     flexDirection: 'row',
@@ -223,21 +214,6 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingTop: 56,
     paddingBottom: theme.spacing.md,
-  },
-  topBarActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  themeToggle: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   topBarTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
   adminBadge: {

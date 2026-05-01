@@ -39,7 +39,6 @@ const TOOL_CARDS = [
   { title: 'User Management', description: 'Control staff roles & access', icon: 'users' as const, color: '#E8B86D', route: 'Users' },
 ] as const;
 
-// Formats a growth percent for display, e.g. +12% or -5%
 function formatGrowth(pct: number | null): string | null {
   if (pct === null) return null;
   if (pct === 0) return '→ 0%';
@@ -118,10 +117,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
               <Text style={styles.headerSubtitle}>Local System Management</Text>
             </View>
             <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={toggleTheme}
-              >
+              <TouchableOpacity style={styles.iconBtn} onPress={toggleTheme}>
                 <Feather name={mode === 'dark' ? 'moon' : 'sun'} size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconBtn} onPress={() => {}}>
@@ -230,6 +226,10 @@ const MetricCard: React.FC<{
   progressColor?: string;
   index: number;
 }> = memo(({ icon, iconColor, label, value, sub, subColor, progressRatio, progressColor, index }) => {
+  // ✅ Each sub-component gets its own theme + styles
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
+
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -288,6 +288,10 @@ const ToolCard: React.FC<{
   index: number;
   onPress: () => void;
 }> = memo(({ title, description, icon, color, index, onPress }) => {
+  // ✅ Each sub-component gets its own theme + styles
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
+
   const scale = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
