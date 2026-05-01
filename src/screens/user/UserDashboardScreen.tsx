@@ -17,20 +17,24 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { useAuth } from '../../context/AuthContext';
-import { theme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
 import { supabase } from '../../lib/supabase';
 import { Feather } from '@expo/vector-icons';
 
 const QUICK_ACTIONS = [
-  { label: 'My Orders', icon: 'shopping-bag' as const, route: 'MyOrders', color: theme.colors.primary },
-  { label: 'Browse & Order', icon: 'grid' as const, route: 'MenuBrowse', color: theme.colors.accent },
-  { label: 'Change Password', icon: 'lock' as const, route: null, color: theme.colors.teal },
+  { label: 'My Orders', icon: 'shopping-bag' as const, route: 'MyOrders', color: '#E8B86D' },
+  { label: 'Browse & Order', icon: 'grid' as const, route: 'MenuBrowse', color: '#D4706A' },
+  { label: 'Change Password', icon: 'lock' as const, route: null, color: '#14B8A6' },
 ];
 
 export default function UserDashboardScreen({ navigation }: any) {
   const { user, logout, updateAvatar } = useAuth();
+  const { theme, mode, toggleTheme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [orderCount, setOrderCount] = useState(0);
   const [completedOrderCount, setCompletedOrderCount] = useState(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -138,17 +142,26 @@ export default function UserDashboardScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
 
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>My Profile</Text>
-        <TouchableOpacity
-          style={styles.settingsBtn}
-          onPress={() => setShowEditProfileModal(true)}
-          activeOpacity={0.7}
-        >
-          <Feather name="edit" size={16} color={theme.colors.textSecondary} />
-        </TouchableOpacity>
+        <View style={styles.topBarButtons}>
+          <TouchableOpacity
+            style={styles.themeToggleBtn}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
+          >
+            <Feather name={mode === 'dark' ? 'moon' : 'sun'} size={16} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.settingsBtn}
+            onPress={() => setShowEditProfileModal(true)}
+            activeOpacity={0.7}
+          >
+            <Feather name="edit" size={16} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -516,13 +529,21 @@ const ActionRow: React.FC<{
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   topBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: theme.spacing.lg, paddingTop: 56, paddingBottom: theme.spacing.md,
   },
   topBarTitle: { fontSize: 26, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.5 },
+  topBarButtons: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm,
+  },
+  themeToggleBtn: {
+    width: 40, height: 40, backgroundColor: theme.colors.surface,
+    borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
   settingsBtn: {
     width: 40, height: 40, backgroundColor: theme.colors.surface,
     borderRadius: 20, alignItems: 'center', justifyContent: 'center',

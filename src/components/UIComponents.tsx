@@ -12,8 +12,12 @@ import {
   Dimensions,
 } from 'react-native';
 import Svg, { Defs, Pattern, Circle, Rect } from 'react-native-svg';
-import { theme } from '../utils/theme';
+import { useAppTheme } from '../context/ThemeContext';
+import { useThemedStyles } from '../utils/themed';
+import { AppTheme, theme } from '../utils/theme';
 import { Feather } from '@expo/vector-icons';
+
+const useStyles = (theme: AppTheme) => useThemedStyles(createStyles, theme);
 
 // ─── Animated Button ───────────────────────────────────────
 export const Button: React.FC<{
@@ -23,7 +27,16 @@ export const Button: React.FC<{
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'outline' | 'success' | 'danger';
   icon?: keyof typeof Feather.glyphMap;
-}> = memo(({ title, onPress, loading = false, disabled = false, variant = 'primary', icon }) => {
+}> = memo(({
+  title,
+  onPress,
+  loading = false,
+  disabled = false,
+  variant = 'primary',
+  icon,
+}) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
   const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () =>
@@ -94,6 +107,9 @@ export const Input: React.FC<{
   error,
   icon,
 }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+
   return (
     <>
       <View style={[styles.inputContainer, error && styles.inputContainerError]}>
@@ -125,7 +141,11 @@ export const Input: React.FC<{
 
 // ─── Card ──────────────────────────────────────────────────
 export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = memo(
-  ({ children, style }) => <View style={[styles.card, style]}>{children}</View>
+  ({ children, style }) => {
+    const { theme } = useAppTheme();
+    const styles = useStyles(theme);
+    return <View style={[styles.card, style]}>{children}</View>;
+  }
 );
 
 // ─── Animated Card (for lists) ─────────────────────────────
@@ -134,6 +154,8 @@ export const AnimatedCard: React.FC<{
   style?: ViewStyle;
   index?: number;
 }> = memo(({ children, style, index = 0 }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(24)).current;
 
@@ -163,17 +185,23 @@ export const AnimatedCard: React.FC<{
 });
 
 // ─── Header ────────────────────────────────────────────────
-export const Header: React.FC<{ title: string; subtitle?: string }> = memo(({ title, subtitle }) => (
-  <View style={styles.headerContainer}>
-    <Text style={styles.headerTitle}>{title}</Text>
-    {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
-  </View>
-));
+export const Header: React.FC<{ title: string; subtitle?: string }> = memo(({ title, subtitle }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+  return (
+    <View style={styles.headerContainer}>
+      <Text style={styles.headerTitle}>{title}</Text>
+      {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
+    </View>
+  );
+});
 
 // ─── Section Label ─────────────────────────────────────────
-export const SectionLabel: React.FC<{ label: string }> = memo(({ label }) => (
-  <Text style={styles.sectionLabel}>{label}</Text>
-));
+export const SectionLabel: React.FC<{ label: string }> = memo(({ label }) => {
+  const { theme } = useAppTheme();
+  const styles = useStyles(theme);
+  return <Text style={styles.sectionLabel}>{label}</Text>;
+});
 
 // ─── Stat Card ─────────────────────────────────────────────
 export const StatCard: React.FC<{
@@ -271,7 +299,7 @@ export const BackgroundTexture: React.FC = memo(() => {
 });
 
 // ─── Styles ────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   button: {
     paddingVertical: 14,
     paddingHorizontal: theme.spacing.lg,
@@ -466,3 +494,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
+const styles = createStyles(theme);

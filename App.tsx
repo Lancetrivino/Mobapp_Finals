@@ -4,7 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ActivityIndicator, View, StyleSheet, Platform, Animated } from 'react-native';
-import { theme } from './src/utils/theme';
+import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
+import { AppTheme } from './src/utils/theme';
 import { MenuItem } from './src/types/index';
 import { Feather } from '@expo/vector-icons';
 import { storage } from './src/utils/storage';
@@ -58,6 +59,7 @@ const UserStack = createNativeStackNavigator<UserStackParamList>();
 
 // ─── Orders Badge Icon ─────────────────────────────────────
 function OrdersBadgeIcon({ color, size }: { color: string; size: number }) {
+  const { theme } = useAppTheme();
   const [hasPending, setHasPending] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -105,24 +107,26 @@ function OrdersBadgeIcon({ color, size }: { color: string; size: number }) {
 }
 
 // ─── Shared Tab Bar Style ──────────────────────────────────
-const tabBarStyle = {
-  backgroundColor: '#0A1628',
-  borderTopColor: 'rgba(255,255,255,0.06)',
+const getTabBarStyle = (theme: AppTheme) => ({
+  backgroundColor: theme.colors.surface,
+  borderTopColor: theme.colors.border,
   borderTopWidth: 1,
   paddingBottom: Platform.OS === 'ios' ? 24 : 8,
   paddingTop: 8,
   height: Platform.OS === 'ios' ? 84 : 64,
-};
+});
 
 // ─── Admin Navigator (Bottom Tabs) ─────────────────────────
 function AdminNavigator() {
+  const { theme } = useAppTheme();
+
   return (
     <AdminTab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle,
+        tabBarStyle: getTabBarStyle(theme),
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#4B5563',
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const, marginTop: 2 },
       }}
     >
@@ -172,13 +176,15 @@ function AdminNavigator() {
 
 // ─── User Tabs ──────────────────────────────────────────────
 function UserTabs() {
+  const { theme } = useAppTheme();
+
   return (
     <UserTab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle,
+        tabBarStyle: getTabBarStyle(theme),
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#4B5563',
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const, marginTop: 2 },
       }}
     >
@@ -224,17 +230,30 @@ function UserNavigator() {
 // ─── App Navigator (Auth Gate) ─────────────────────────────
 function AppNavigator() {
   const { user, isLoading } = useAuth();
+  const { theme, mode } = useAppTheme();
+
+  const navigationTheme = {
+    dark: mode === 'dark',
+    colors: {
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.text,
+      border: theme.colors.border,
+      notification: theme.colors.accent,
+    },
+  };
 
   if (isLoading) {
     return (
-      <View style={styles.loader}>
+      <View style={[styles.loader, { backgroundColor: theme.colors.background }] }>
         <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
       {/* @ts-ignore */}
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
@@ -256,9 +275,11 @@ function AppNavigator() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppNavigator />
+        </AuthProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
@@ -268,6 +289,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
   },
 });

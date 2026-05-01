@@ -14,12 +14,16 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { Input, Button, BackgroundTexture } from '../components/UIComponents';
-import { theme } from '../utils/theme';
+import { useAppTheme } from '../context/ThemeContext';
+import { useThemedStyles } from '../utils/themed';
+import { AppTheme } from '../utils/theme';
 import { Feather } from '@expo/vector-icons';
 
 export default function RegisterScreen() {
   const navigation = useNavigation<any>();
   const { register } = useAuth();
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -102,7 +106,7 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <BackgroundTexture />
 
       <View style={styles.topSection}>
@@ -222,7 +226,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,

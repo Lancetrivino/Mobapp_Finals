@@ -9,7 +9,9 @@ import {
   StatusBar,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { storage, AdminAnalytics } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
 import { Feather } from '@expo/vector-icons';
@@ -32,9 +34,9 @@ const INITIAL_ANALYTICS: AdminAnalytics = {
 };
 
 const TOOL_CARDS = [
-  { title: 'Menu Management', description: 'Add, edit, or disable dishes', icon: 'grid' as const, color: theme.colors.accent, route: 'Menu' },
-  { title: 'Order Management', description: 'Track and confirm live orders', icon: 'clipboard' as const, color: theme.colors.success, route: 'Orders' },
-  { title: 'User Management', description: 'Control staff roles & access', icon: 'users' as const, color: theme.colors.primary, route: 'Users' },
+  { title: 'Menu Management', description: 'Add, edit, or disable dishes', icon: 'grid' as const, color: '#D4706A', route: 'Menu' },
+  { title: 'Order Management', description: 'Track and confirm live orders', icon: 'clipboard' as const, color: '#10B981', route: 'Orders' },
+  { title: 'User Management', description: 'Control staff roles & access', icon: 'users' as const, color: '#E8B86D', route: 'Users' },
 ] as const;
 
 // Formats a growth percent for display, e.g. +12% or -5%
@@ -44,13 +46,15 @@ function formatGrowth(pct: number | null): string | null {
   return pct > 0 ? `↑ +${pct}%` : `↓ ${pct}%`;
 }
 
-function growthColor(pct: number | null): string {
+function growthColor(pct: number | null, theme: AppTheme): string {
   if (pct === null || pct === 0) return theme.colors.textMuted;
   return pct > 0 ? theme.colors.success : theme.colors.error;
 }
 
 export default function AdminDashboardScreen({ navigation }: any) {
   const { logout, user } = useAuth();
+  const { theme, mode, toggleTheme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [stats, setStats] = useState<Stats>(INITIAL_STATS);
   const [analytics, setAnalytics] = useState<AdminAnalytics>(INITIAL_ANALYTICS);
 
@@ -103,7 +107,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <ScrollView showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
 
@@ -114,6 +118,12 @@ export default function AdminDashboardScreen({ navigation }: any) {
               <Text style={styles.headerSubtitle}>Local System Management</Text>
             </View>
             <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={toggleTheme}
+              >
+                <Feather name={mode === 'dark' ? 'moon' : 'sun'} size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
               <TouchableOpacity style={styles.iconBtn} onPress={() => {}}>
                 <Feather name="bell" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
@@ -132,7 +142,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
               label="Total Orders"
               value={stats.totalOrders.toString()}
               sub={orderGrowthLabel ?? 'vs yesterday'}
-              subColor={growthColor(analytics.orderGrowthPercent)}
+              subColor={growthColor(analytics.orderGrowthPercent, theme)}
               index={0}
             />
             <MetricCard
@@ -150,7 +160,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
               label="Revenue"
               value={formatRevenue(stats.revenue)}
               sub={revenueGrowthLabel ?? 'vs last week'}
-              subColor={growthColor(analytics.revenueGrowthPercent)}
+              subColor={growthColor(analytics.revenueGrowthPercent, theme)}
               index={2}
             />
             <MetricCard
@@ -314,7 +324,7 @@ const ToolCard: React.FC<{
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   content: { padding: theme.spacing.lg, paddingTop: 56, paddingBottom: 24 },
 

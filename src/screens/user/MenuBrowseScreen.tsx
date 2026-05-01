@@ -14,13 +14,15 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { MenuItem, CartItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { Feather } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - theme.spacing.lg * 2 - theme.spacing.md) / 2;
+const CARD_WIDTH = (width - 24 * 2 - 16) / 2;
 
 const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   All: 'grid',
@@ -34,6 +36,8 @@ const keyExtractor = (item: MenuItem) => item.id;
 const categoryKeyExtractor = (c: string) => c;
 
 export default function MenuBrowseScreen({ navigation, route }: any) {
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchText, setSearchText] = useState('');
@@ -50,14 +54,9 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
     useCallback(() => {
       loadMenuItems();
 
-      // Clear cart when returning after a successful order
       if (route?.params?.orderPlaced) {
         setCart([]);
-        navigation.setParams({ orderPlaced: false, updatedCart: undefined });
-      } else if (route?.params?.updatedCart !== undefined) {
-        // Sync cart with any changes made in PlaceOrderScreen
-        setCart(route.params.updatedCart);
-        navigation.setParams({ updatedCart: undefined });
+        navigation.setParams({ orderPlaced: false });
       }
     }, [route?.params?.orderPlaced, route?.params?.updatedCart])
   );
@@ -109,14 +108,19 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
       }
       return [
         ...prev,
-        {
-          menu_item_id: item.id,
-          name: item.name,
-          quantity: 1,
-          price: item.price,
-        },
+        { menu_item_id: item.id, name: item.name, quantity: 1, price: item.price },
       ];
     });
+  }, []);
+
+  // ✅ NEW: remove one from cart on the card stepper
+  const removeFromCart = useCallback((item: MenuItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCart((prev) =>
+      prev
+        .map((c) => c.menu_item_id === item.id ? { ...c, quantity: c.quantity - 1 } : c)
+        .filter((c) => c.quantity > 0)
+    );
   }, []);
 
   const cartTotal = React.useMemo(
@@ -139,11 +143,22 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
     });
   }, []);
 
+  // ✅ NEW: pass cartQuantity and onRemove down to the card
   const renderItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<MenuItem>) => (
-      <MenuGridCard item={item} index={index} onAdd={addToCart} />
-    ),
-    [addToCart]
+    ({ item, index }: ListRenderItemInfo<MenuItem>) => {
+      const cartEntry = cart.find((c) => c.menu_item_id === item.id);
+      const cartQuantity = cartEntry ? cartEntry.quantity : 0;
+      return (
+        <MenuGridCard
+          item={item}
+          index={index}
+          onAdd={addToCart}
+          onRemove={removeFromCart}
+          cartQuantity={cartQuantity}
+        />
+      );
+    },
+    [addToCart, removeFromCart, cart]
   );
 
   const renderCategory = useCallback(
@@ -161,7 +176,7 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         {/* Header */}
         <View style={styles.header}>
@@ -176,7 +191,7 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
           </View>
           <TouchableOpacity
             style={styles.cartIconBtn}
-            onPress={cart.length > 0 ? handlePlaceOrder : undefined}
+            onPress={handlePlaceOrder}
             activeOpacity={0.8}
           >
             <Feather name="shopping-cart" size={20} color={theme.colors.text} />
@@ -302,7 +317,9 @@ const MenuGridCard: React.FC<{
   item: MenuItem;
   index: number;
   onAdd: (item: MenuItem) => void;
-}> = memo(({ item, index, onAdd }) => {
+  onRemove: (item: MenuItem) => void;   // ✅ NEW
+  cartQuantity: number;                  // ✅ NEW
+}> = memo(({ item, index, onAdd, onRemove, cartQuantity }) => {
   const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -336,6 +353,10 @@ const MenuGridCard: React.FC<{
     onAdd(item);
   }, [item, onAdd]);
 
+  const onPressRemove = useCallback(() => {
+    onRemove(item);
+  }, [item, onRemove]);
+
   return (
     <Animated.View
       style={[
@@ -356,11 +377,26 @@ const MenuGridCard: React.FC<{
       )}
       <Text style={styles.gridItemName} numberOfLines={1}>{item.name}</Text>
       <Text style={styles.gridItemDesc} numberOfLines={1}>{item.description}</Text>
+
       <View style={styles.gridItemBottom}>
         <Text style={styles.gridItemPrice}>₱{item.price.toFixed(2)}</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={onPressAdd} activeOpacity={1}>
-          <Feather name="plus" size={16} color="#0D1B2A" />
-        </TouchableOpacity>
+
+        {/* ✅ NEW: show stepper when in cart, plain + when not */}
+        {cartQuantity > 0 ? (
+          <View style={styles.stepper}>
+            <TouchableOpacity style={styles.stepperBtn} onPress={onPressRemove} activeOpacity={0.75}>
+              <Feather name="minus" size={12} color="#0D1B2A" />
+            </TouchableOpacity>
+            <Text style={styles.stepperQty}>{cartQuantity}</Text>
+            <TouchableOpacity style={styles.stepperBtn} onPress={onPressAdd} activeOpacity={0.75}>
+              <Feather name="plus" size={12} color="#0D1B2A" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.addBtn} onPress={onPressAdd} activeOpacity={1}>
+            <Feather name="plus" size={16} color="#0D1B2A" />
+          </TouchableOpacity>
+        )}
       </View>
     </Animated.View>
   );
@@ -388,7 +424,7 @@ const SkeletonCard: React.FC = memo(() => {
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
 
   header: {
@@ -451,10 +487,7 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: theme.colors.text, height: '100%' },
 
-  chipList: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
+  chipList: { flexGrow: 0, flexShrink: 0 },
   chipScroll: {
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
@@ -510,6 +543,7 @@ const styles = StyleSheet.create({
   gridItemDesc: { fontSize: 11, color: theme.colors.textMuted, marginBottom: theme.spacing.sm },
   gridItemBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   gridItemPrice: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
+
   addBtn: {
     width: 28,
     height: 28,
@@ -518,6 +552,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...theme.shadows.small,
+  },
+
+  // ✅ NEW stepper styles
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...theme.shadows.small,
+  },
+  stepperBtn: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperQty: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0D1B2A',
+    minWidth: 16,
+    textAlign: 'center',
   },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },

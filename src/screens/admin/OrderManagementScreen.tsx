@@ -11,7 +11,9 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { Order, OrderStatus } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { Feather } from '@expo/vector-icons';
@@ -23,12 +25,12 @@ const COLUMN_WIDTH = SCREEN_WIDTH * 0.72;
 const STATUS_FLOW: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready', 'completed'];
 
 const STATUS_CONFIG: Record<OrderStatus, { color: string; label: string; icon: keyof typeof Feather.glyphMap }> = {
-  pending:   { color: theme.colors.warning, label: 'Pending',   icon: 'clock' },
-  confirmed: { color: theme.colors.blue,    label: 'Confirmed', icon: 'check' },
-  preparing: { color: theme.colors.accent,  label: 'Preparing', icon: 'zap' },
-  ready:     { color: theme.colors.success, label: 'Ready',     icon: 'check-circle' },
-  completed: { color: '#27AE60',            label: 'Served',    icon: 'check-circle' },
-  cancelled: { color: theme.colors.error,   label: 'Cancelled', icon: 'x-circle' },
+  pending:   { color: '#F59E0B', label: 'Pending',   icon: 'clock' },
+  confirmed: { color: '#3B82F6', label: 'Confirmed', icon: 'check' },
+  preparing: { color: '#D4706A', label: 'Preparing', icon: 'zap' },
+  ready:     { color: '#10B981', label: 'Ready',     icon: 'check-circle' },
+  completed: { color: '#27AE60', label: 'Served',    icon: 'check-circle' },
+  cancelled: { color: '#EF4444', label: 'Cancelled', icon: 'x-circle' },
 };
 
 const KANBAN_COLUMNS: {
@@ -37,12 +39,14 @@ const KANBAN_COLUMNS: {
   color: string;
   statuses: OrderStatus[];
 }[] = [
-  { key: 'pending',   label: 'Pending',   color: theme.colors.warning, statuses: ['pending'] },
-  { key: 'preparing', label: 'Preparing', color: theme.colors.blue,    statuses: ['confirmed', 'preparing'] },
-  { key: 'ready',     label: 'Ready',     color: theme.colors.success,  statuses: ['ready'] },
+  { key: 'pending',   label: 'Pending',   color: '#F59E0B', statuses: ['pending'] },
+  { key: 'preparing', label: 'Preparing', color: '#3B82F6', statuses: ['confirmed', 'preparing'] },
+  { key: 'ready',     label: 'Ready',     color: '#10B981', statuses: ['ready'] },
 ];
 
 export default function OrderManagementScreen() {
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
@@ -122,7 +126,7 @@ export default function OrderManagementScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Live Orders</Text>
@@ -379,7 +383,7 @@ const SkeletonOrderCard: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   header: {
     paddingHorizontal: theme.spacing.lg, paddingTop: 56, paddingBottom: theme.spacing.md,

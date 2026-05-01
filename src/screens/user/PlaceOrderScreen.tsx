@@ -13,7 +13,9 @@ import {
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
 import { Button, Input } from '../../components/UIComponents';
-import { theme } from '../../utils/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../utils/themed';
+import { AppTheme } from '../../utils/theme';
 import { CartItem } from '../../types/index';
 import { storage } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
@@ -21,18 +23,20 @@ import { Feather } from '@expo/vector-icons';
 
 export default function PlaceOrderScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const { theme, mode } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
 
   const initialCart: CartItem[] = route?.params?.cartItems ?? [];
   const [cartItems, setCartItems] = useState<CartItem[]>(initialCart);
-  const [tableNumber, setTableNumber] = useState<string>(
-    route?.params?.tableNumber ? String(route.params.tableNumber) : ''
-  );
+
+  // ✅ tableNumber is read-only — comes from MenuBrowseScreen, never editable
+  const tableNumber: number = route?.params?.tableNumber ?? 1;
+
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirmVisible, setConfirmVisible] = useState(false);
 
-  // Guard against double-submission
   const isSubmitting = useRef(false);
   const orderPlacedRef = useRef(false);
 
@@ -91,18 +95,13 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
     [cartItems]
   );
 
+  // ✅ Removed tableNumber validation — it's automatic now
   const validate = useCallback((): boolean => {
     const e: Record<string, string> = {};
     if (cartItems.length === 0) e.cart = 'Please add at least one item.';
-    const tableNum = Number(tableNumber.trim());
-    if (!tableNumber.trim()) {
-      e.tableNumber = 'Table number is required.';
-    } else if (!Number.isInteger(tableNum) || tableNum <= 0 || tableNum > 200) {
-      e.tableNumber = 'Enter a valid table number (1–200).';
-    }
     setErrors(e);
     return Object.keys(e).length === 0;
-  }, [cartItems, tableNumber]);
+  }, [cartItems]);
 
   const handleShowConfirm = useCallback(() => {
     if (!validate()) return;
@@ -123,7 +122,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
         user.id,
         cartItems,
         totalAmount,
-        Number(tableNumber.trim()),
+        tableNumber,
         notes.trim() || undefined
       );
 
@@ -136,7 +135,6 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
           [{ text: 'View My Orders', onPress: () => navigation.navigate('MyOrders') }]
         );
         setCartItems([]);
-        setTableNumber('');
         setNotes('');
         navigation.navigate('MenuBrowse', { orderPlaced: true });
       } else {
@@ -151,17 +149,16 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
     }
   }, [user?.id, cartItems, totalAmount, tableNumber, notes, navigation, hideConfirmModal]);
 
-  const handleTableChange = useCallback((t: string) => {
-    setTableNumber(t);
-    setErrors((e) => ({ ...e, tableNumber: undefined }));
-  }, []);
+  const handleGoBack = useCallback(() => {
+    navigation.navigate('MenuBrowse', { updatedCart: cartItems });
+  }, [cartItems, navigation]);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.backBtn} onPress={handleGoBack} activeOpacity={0.7}>
           <Feather name="arrow-left" size={20} color={theme.colors.text} />
         </TouchableOpacity>
         <View>
@@ -175,22 +172,28 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
       <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
+          {/* ✅ TABLE NUMBER — read-only display card, not an Input */}
           <Text style={styles.sectionLabel}>TABLE NUMBER</Text>
-          <Input
-            placeholder="e.g. 8"
-            value={tableNumber}
-            onChangeText={handleTableChange}
-            keyboardType="numeric"
-            error={errors.tableNumber}
-            icon="hash"
-          />
+          <View style={styles.tableCard}>
+            <View style={styles.tableCardLeft}>
+              <Feather name="hash" size={16} color={theme.colors.primary} />
+              <Text style={styles.tableCardLabel}>Assigned Table</Text>
+            </View>
+            <Text style={styles.tableCardNumber}>
+              {String(tableNumber).padStart(2, '0')}
+            </Text>
+          </View>
 
           <Text style={styles.sectionLabel}>ORDER ITEMS</Text>
           {cartItems.length === 0 ? (
             <View style={styles.emptyCart}>
               <Feather name="shopping-cart" size={32} color={theme.colors.textMuted} />
               <Text style={styles.emptyCartText}>Your cart is empty.</Text>
-              <Button title="Browse Menu" onPress={() => navigation.navigate('MenuBrowse')} variant="secondary" />
+              <Button
+                title="Browse Menu"
+                onPress={() => navigation.navigate('MenuBrowse', { updatedCart: [] })}
+                variant="secondary"
+              />
             </View>
           ) : (
             <View style={styles.cartList}>
@@ -221,12 +224,10 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>₱{totalAmount.toFixed(2)}</Text>
               </View>
-              {tableNumber.trim() !== '' && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Table</Text>
-                  <Text style={styles.summaryValue}>#{tableNumber.trim()}</Text>
-                </View>
-              )}
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Table</Text>
+                <Text style={styles.summaryValue}>#{String(tableNumber).padStart(2, '0')}</Text>
+              </View>
               <View style={styles.divider} />
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryTotalLabel}>Total</Text>
@@ -265,7 +266,7 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
             </View>
 
             <Text style={styles.modalTitle}>Confirm Your Order</Text>
-            <Text style={styles.modalSubtitle}>Table #{tableNumber.trim()}</Text>
+            <Text style={styles.modalSubtitle}>Table #{tableNumber}</Text>
 
             <View style={styles.modalDivider} />
 
@@ -353,34 +354,113 @@ const CartRow: React.FC<{
           <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={handleIncrement} activeOpacity={0.75}>
             <Feather name="plus" size={14} color="#0D1B2A" />
           </TouchableOpacity>
+          <Text style={styles.cartItemTotal}>₱{(item.price * item.quantity).toFixed(2)}</Text>
         </View>
-        <Text style={styles.cartItemTotal}>₱{(item.price * item.quantity).toFixed(2)}</Text>
       </Animated.View>
     </Swipeable>
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.lg, paddingTop: 52, paddingBottom: theme.spacing.md },
-  backBtn: { width: 40, height: 40, backgroundColor: theme.colors.surface, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.border },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 56,
+    paddingBottom: theme.spacing.md,
+    gap: theme.spacing.md,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
   headerTitle: { fontSize: 20, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3 },
-  headerSub: { fontSize: 12, color: theme.colors.textSecondary, marginTop: 1 },
-  scrollContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 40 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: theme.colors.textMuted, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: theme.spacing.sm, marginTop: theme.spacing.md },
-  emptyCart: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, padding: theme.spacing.xl, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.md },
-  emptyCartText: { fontSize: 14, color: theme.colors.textSecondary },
-  cartList: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.md, overflow: 'hidden', ...theme.shadows.small },
-  cartRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.colors.border, gap: theme.spacing.sm, backgroundColor: theme.colors.surface },
+  headerSub: { fontSize: 12, color: theme.colors.textSecondary, fontWeight: '500', marginTop: 1 },
+  scrollContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 40, paddingTop: theme.spacing.md },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    letterSpacing: 1,
+    marginBottom: theme.spacing.xs,
+    marginTop: theme.spacing.md,
+  },
+
+  // ✅ NEW: read-only table display card
+  tableCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.medium,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary + '55',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 14,
+    marginBottom: theme.spacing.sm,
+  },
+  tableCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tableCardLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  tableCardNumber: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: theme.colors.primary,
+    letterSpacing: 1,
+  },
+
+  cartList: { marginBottom: theme.spacing.md },
+  emptyCart: { alignItems: 'center', gap: 12, paddingVertical: 32 },
+  emptyCartText: { fontSize: 14, color: theme.colors.textSecondary, fontWeight: '500' },
+  cartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+  },
   cartItemInfo: { flex: 1 },
   cartItemName: { fontSize: 14, fontWeight: '700', color: theme.colors.text, marginBottom: 2 },
   cartItemUnitPrice: { fontSize: 12, color: theme.colors.textMuted },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  qtyBtn: { width: 28, height: 28, backgroundColor: theme.colors.surfaceHigh, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.borderStrong },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.borderStrong,
+  },
   qtyBtnAdd: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   qtyText: { fontSize: 15, fontWeight: '700', color: theme.colors.text, minWidth: 20, textAlign: 'center' },
   cartItemTotal: { fontSize: 14, fontWeight: '700', color: theme.colors.primary, minWidth: 56, textAlign: 'right' },
-  summaryCard: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.large, padding: theme.spacing.md, marginBottom: theme.spacing.md, borderWidth: 1, borderColor: theme.colors.border, ...theme.shadows.small },
+  summaryCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.large,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadows.small,
+  },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   summaryLabel: { fontSize: 14, color: theme.colors.textSecondary, fontWeight: '500' },
   summaryValue: { fontSize: 14, color: theme.colors.text, fontWeight: '600' },
@@ -389,7 +469,14 @@ const styles = StyleSheet.create({
   summaryTotal: { fontSize: 22, fontWeight: '800', color: theme.colors.primary },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: theme.spacing.sm },
   errorText: { fontSize: 12, color: theme.colors.error, fontWeight: '500' },
-  swipeDelete: { backgroundColor: theme.colors.error, justifyContent: 'center', alignItems: 'center', width: 72, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  swipeDelete: {
+    backgroundColor: theme.colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
 
   // Modal
   modalOverlay: {
@@ -491,3 +578,4 @@ const styles = StyleSheet.create({
   },
   modalConfirmText: { fontSize: 15, fontWeight: '800', color: '#0D1B2A' },
 });
+
