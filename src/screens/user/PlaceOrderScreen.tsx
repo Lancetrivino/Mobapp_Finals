@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
   StatusBar,
+  Modal,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import * as Haptics from 'expo-haptics';
@@ -29,9 +30,25 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   // Guard against double-submission
   const isSubmitting = useRef(false);
+  const orderPlacedRef = useRef(false);
+
+  // Modal slide-up animation
+  const modalSlide = useRef(new Animated.Value(300)).current;
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+
+  // Pass cart state back to MenuBrowseScreen on any back navigation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (orderPlacedRef.current) return;
+      e.preventDefault();
+      navigation.navigate('MenuBrowse', { updatedCart: cartItems });
+    });
+    return unsubscribe;
+  }, [navigation, cartItems]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -42,6 +59,24 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
       Animated.spring(slideAnim, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  const showConfirmModal = useCallback(() => {
+    setConfirmVisible(true);
+    Animated.parallel([
+      Animated.timing(modalOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(modalSlide, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true }),
+    ]).start();
+  }, [modalOpacity, modalSlide]);
+
+  const hideConfirmModal = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(modalOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(modalSlide, { toValue: 300, duration: 180, useNativeDriver: true }),
+    ]).start(() => {
+      setConfirmVisible(false);
+      modalSlide.setValue(300);
+    });
+  }, [modalOpacity, modalSlide]);
 
   const updateQty = useCallback((menu_item_id: string, delta: number) => {
     setCartItems((prev) =>
@@ -69,12 +104,19 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
     return Object.keys(e).length === 0;
   }, [cartItems, tableNumber]);
 
-  const handlePlaceOrder = useCallback(async () => {
+  const handleShowConfirm = useCallback(() => {
+    if (!validate()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    showConfirmModal();
+  }, [validate, showConfirmModal]);
+
+  const handleConfirmOrder = useCallback(async () => {
     if (isSubmitting.current) return;
-    if (!validate() || !user?.id) return;
+    if (!user?.id) return;
 
     isSubmitting.current = true;
     setLoading(true);
+    hideConfirmModal();
 
     try {
       const newOrder = await storage.createOrder(
@@ -87,27 +129,27 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
 
       if (newOrder) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        orderPlacedRef.current = true;
         Alert.alert(
-          'Order Placed! 🎉',
+          'Order Placed!',
           `Order #${newOrder.id.slice(-6).toUpperCase()} for Table ${newOrder.table_number} has been submitted.`,
           [{ text: 'View My Orders', onPress: () => navigation.navigate('MyOrders') }]
         );
         setCartItems([]);
         setTableNumber('');
         setNotes('');
-        // Signal MenuBrowse to clear its cart when the user returns to that tab
         navigation.navigate('MenuBrowse', { orderPlaced: true });
       } else {
         Alert.alert('Error', 'Failed to place order. Please try again.');
       }
     } catch (error) {
-      console.error('[PlaceOrderScreen] handlePlaceOrder:', error);
+      console.error('[PlaceOrderScreen] handleConfirmOrder:', error);
       Alert.alert('Error', 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
       isSubmitting.current = false;
     }
-  }, [validate, user?.id, cartItems, totalAmount, tableNumber, notes, navigation]);
+  }, [user?.id, cartItems, totalAmount, tableNumber, notes, navigation, hideConfirmModal]);
 
   const handleTableChange = useCallback((t: string) => {
     setTableNumber(t);
@@ -195,13 +237,74 @@ export default function PlaceOrderScreen({ navigation, route }: any) {
 
           <Button
             title="Place Order"
-            onPress={handlePlaceOrder}
+            onPress={handleShowConfirm}
             loading={loading}
             disabled={cartItems.length === 0}
             icon="check-circle"
           />
         </ScrollView>
       </Animated.View>
+
+      {/* ── Confirmation Modal ─────────────────────────────── */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="none"
+        onRequestClose={hideConfirmModal}
+      >
+        <Animated.View style={[styles.modalOverlay, { opacity: modalOpacity }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={hideConfirmModal} activeOpacity={1} />
+          <Animated.View style={[styles.modalSheet, { transform: [{ translateY: modalSlide }] }]}>
+
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalIconRow}>
+              <View style={styles.modalIconCircle}>
+                <Feather name="shopping-bag" size={24} color={theme.colors.primary} />
+              </View>
+            </View>
+
+            <Text style={styles.modalTitle}>Confirm Your Order</Text>
+            <Text style={styles.modalSubtitle}>Table #{tableNumber.trim()}</Text>
+
+            <View style={styles.modalDivider} />
+
+            {/* Item list */}
+            {cartItems.map((item) => (
+              <View key={item.menu_item_id} style={styles.modalItemRow}>
+                <Text style={styles.modalItemQty}>{item.quantity}×</Text>
+                <Text style={styles.modalItemName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.modalItemPrice}>₱{(item.price * item.quantity).toFixed(2)}</Text>
+              </View>
+            ))}
+
+            {notes.trim() !== '' && (
+              <View style={styles.modalNotesRow}>
+                <Feather name="message-square" size={13} color={theme.colors.textMuted} />
+                <Text style={styles.modalNotesText} numberOfLines={2}>{notes.trim()}</Text>
+              </View>
+            )}
+
+            <View style={styles.modalDivider} />
+
+            <View style={styles.modalTotalRow}>
+              <Text style={styles.modalTotalLabel}>Total</Text>
+              <Text style={styles.modalTotalAmount}>₱{totalAmount.toFixed(2)}</Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={hideConfirmModal} activeOpacity={0.75}>
+                <Text style={styles.modalCancelText}>Go Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleConfirmOrder} activeOpacity={0.85}>
+                <Feather name="check" size={16} color="#0D1B2A" />
+                <Text style={styles.modalConfirmText}>Yes, Place Order</Text>
+              </TouchableOpacity>
+            </View>
+
+          </Animated.View>
+        </Animated.View>
+      </Modal>
     </View>
   );
 }
@@ -287,4 +390,104 @@ const styles = StyleSheet.create({
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: theme.spacing.sm },
   errorText: { fontSize: 12, color: theme.colors.error, fontWeight: '500' },
   swipeDelete: { backgroundColor: theme.colors.error, justifyContent: 'center', alignItems: 'center', width: 72, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: 36,
+    paddingTop: 12,
+    ...theme.shadows.large,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: theme.colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalIconRow: { alignItems: 'center', marginBottom: 12 },
+  modalIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.colors.text,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  modalDivider: { height: 1, backgroundColor: theme.colors.border, marginVertical: 12 },
+  modalItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    gap: 8,
+  },
+  modalItemQty: { fontSize: 13, fontWeight: '700', color: theme.colors.primary, width: 28 },
+  modalItemName: { flex: 1, fontSize: 13, fontWeight: '600', color: theme.colors.text },
+  modalItemPrice: { fontSize: 13, fontWeight: '700', color: theme.colors.text },
+  modalNotesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: theme.colors.surfaceHigh,
+    borderRadius: theme.borderRadius.medium,
+    padding: theme.spacing.sm,
+  },
+  modalNotesText: { flex: 1, fontSize: 12, color: theme.colors.textSecondary },
+  modalTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTotalLabel: { fontSize: 16, fontWeight: '700', color: theme.colors.text },
+  modalTotalAmount: { fontSize: 24, fontWeight: '800', color: theme.colors.primary },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalCancelBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: theme.borderRadius.large,
+    backgroundColor: theme.colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  modalCancelText: { fontSize: 15, fontWeight: '700', color: theme.colors.textSecondary },
+  modalConfirmBtn: {
+    flex: 2,
+    height: 50,
+    borderRadius: theme.borderRadius.large,
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...theme.shadows.medium,
+  },
+  modalConfirmText: { fontSize: 15, fontWeight: '800', color: '#0D1B2A' },
 });

@@ -134,10 +134,6 @@ export default function UserDashboardScreen({ navigation }: any) {
       ? { label: 'ADMIN ROLE', color: theme.colors.primary }
       : { label: 'USER ROLE', color: theme.colors.teal };
 
-  // Resolve which avatar URI to show:
-  // 1. pendingAvatarUri (local, while uploading) → instant feedback
-  // 2. user.avatar_url (from Supabase/Cloudinary) → persisted
-  // 3. null → show initials
   const displayAvatarUri = pendingAvatarUri ?? user?.avatar_url ?? null;
 
   return (

@@ -53,9 +53,13 @@ export default function MenuBrowseScreen({ navigation, route }: any) {
       // Clear cart when returning after a successful order
       if (route?.params?.orderPlaced) {
         setCart([]);
-        navigation.setParams({ orderPlaced: false });
+        navigation.setParams({ orderPlaced: false, updatedCart: undefined });
+      } else if (route?.params?.updatedCart !== undefined) {
+        // Sync cart with any changes made in PlaceOrderScreen
+        setCart(route.params.updatedCart);
+        navigation.setParams({ updatedCart: undefined });
       }
-    }, [route?.params?.orderPlaced])
+    }, [route?.params?.orderPlaced, route?.params?.updatedCart])
   );
 
   useEffect(() => {

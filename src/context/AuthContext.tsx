@@ -197,14 +197,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const response = await fetch(
         'https://api.cloudinary.com/v1_1/dykaegsup/image/upload',
-        { method: 'POST', body: data, headers: { Accept: 'application/json' } }
+        { method: 'POST', body: data }
       );
       const result = await response.json();
-      if (result.secure_url) {
-        finalUri = result.secure_url;
-      } else {
-        throw new Error(result.error?.message || 'Cloudinary upload failed');
+      if (!response.ok || !result.secure_url) {
+        const msg = result.error?.message || `Upload failed (HTTP ${response.status})`;
+        console.error('[updateAvatar] Cloudinary error:', result);
+        throw new Error(msg);
       }
+      finalUri = result.secure_url;
     }
 
     const { error } = await supabase

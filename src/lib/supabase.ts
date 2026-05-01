@@ -45,6 +45,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       menu_items: {
         Row: {
@@ -80,6 +81,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       orders: {
         Row: {
@@ -87,6 +89,8 @@ export interface Database {
           user_id: string;
           total_amount: number;
           status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+          table_number?: number;
+          notes?: string;
           created_at: string;
           updated_at: string;
         };
@@ -95,6 +99,8 @@ export interface Database {
           user_id: string;
           total_amount: number;
           status?: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+          table_number?: number;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -103,9 +109,36 @@ export interface Database {
           user_id?: string;
           total_amount?: number;
           status?: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+          table_number?: number;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      ratings: {
+        Row: {
+          id: string;
+          user_id: string;
+          order_id: string;
+          stars: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          order_id: string;
+          stars: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          order_id?: string;
+          stars?: number;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       order_items: {
         Row: {
@@ -132,7 +165,10 @@ export interface Database {
           price?: number;
           created_at?: string;
         };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 }

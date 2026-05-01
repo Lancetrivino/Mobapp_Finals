@@ -1,13 +1,3 @@
-/**
- * storage.ts — Supabase repository layer
- *
- * Fixes in this version:
- *  - invalidateAnalyticsCache() called after createOrder and updateOrderStatus
- *  - getAdminAnalytics now computes real week-over-week and day-over-day growth
- *  - cancelOrder passes userId as parameter instead of re-fetching from auth
- *  - deleteUser now shows clear error if called without service-role (auth user persists)
- */
-
 import { supabase } from '../lib/supabase';
 import { User, MenuItem, Order, OrderItem, OrderStatus, CartItem } from '../types/index';
 
