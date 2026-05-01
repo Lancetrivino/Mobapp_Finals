@@ -316,6 +316,8 @@ const CartRow: React.FC<{
   index: number;
   onUpdateQty: (id: string, delta: number) => void;
 }> = memo(({ item, index, onUpdateQty }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 

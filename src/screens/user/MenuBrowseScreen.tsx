@@ -302,15 +302,19 @@ const CategoryChip: React.FC<{
   label: string;
   isActive: boolean;
   onPress: (cat: string) => void;
-}> = memo(({ label, isActive, onPress }) => (
-  <TouchableOpacity
-    style={[styles.chip, isActive && styles.chipActive]}
-    onPress={() => onPress(label)}
-    activeOpacity={0.75}
-  >
-    <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
-  </TouchableOpacity>
-));
+}> = memo(({ label, isActive, onPress }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
+  return (
+    <TouchableOpacity
+      style={[styles.chip, isActive && styles.chipActive]}
+      onPress={() => onPress(label)}
+      activeOpacity={0.75}
+    >
+      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+});
 
 // ─── Menu Grid Card ────────────────────────────────────────
 const MenuGridCard: React.FC<{
@@ -320,6 +324,8 @@ const MenuGridCard: React.FC<{
   onRemove: (item: MenuItem) => void;   // ✅ NEW
   cartQuantity: number;                  // ✅ NEW
 }> = memo(({ item, index, onAdd, onRemove, cartQuantity }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -404,6 +410,8 @@ const MenuGridCard: React.FC<{
 
 // ─── Skeleton Card ─────────────────────────────────────────
 const SkeletonCard: React.FC = memo(() => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const shimmer = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(

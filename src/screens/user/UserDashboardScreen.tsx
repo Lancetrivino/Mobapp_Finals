@@ -260,6 +260,8 @@ export default function UserDashboardScreen({ navigation }: any) {
 
 // ─── Change Password Modal ─────────────────────────────────
 const ChangePasswordModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -407,6 +409,8 @@ const EditProfileModal: React.FC<{
   currentName: string;
   userId: string;
 }> = ({ visible, onClose, currentName, userId }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const { updateProfile } = useAuth();
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -484,6 +488,8 @@ const EditProfileModal: React.FC<{
 
 // ─── Stat Pill ─────────────────────────────────────────────
 const StatPill: React.FC<{ value: string; label: string; index: number }> = ({ value, label, index }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const countAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -505,6 +511,8 @@ const ActionRow: React.FC<{
   label: string; icon: keyof typeof Feather.glyphMap;
   color: string; index: number; isLast: boolean; onPress: () => void;
 }> = ({ label, icon, color, index, isLast, onPress }) => {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles, theme);
   const scale = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
